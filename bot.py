@@ -443,7 +443,7 @@ async def compliment_member(ctx, member: discord.Member = None):
         f"{member.display_name} could probably talk their way out of a Predator hunt!",
     ]
     
-    await ctx.send(f"✨ {random.choice(compliments})")
+    await ctx.send(f"✨ {random.choice(compliments)}")
 
 # Roast the user who runs the command
 @bot.command(name='roastme')
