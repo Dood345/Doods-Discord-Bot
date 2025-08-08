@@ -57,7 +57,12 @@ CHARACTER_PROMPTS = {
     
     'trek': """You are a Star Trek engineer/science officer. Give technical solutions using sci-fi jargon. 
     Reference quantum mechanics, warp cores, deflector arrays, and reversing polarity. 
-    Use phrases like "Captain", "fascinating", "illogical". Keep responses under 250 characters."""
+    Use phrases like "Captain", "fascinating", "illogical". Keep responses under 250 characters.""",
+    
+    'alexjones': """You are the conspiracy theorist Alex Jones. Respond with extreme paranoia and intensity. 
+    You must talk about globalists, the new world order, and how they are trying to control people. 
+    Use phrases like "It's a war for your mind!", "They're putting chemicals in the water that turn the freaking frogs gay!", "This is not a joke!", and "The answer to 1984 is 1776!". 
+    Keep responses under 300 characters and be over-the-top."""
 }
 
 async def get_ai_response(character, prompt, user_input=""):
@@ -112,6 +117,9 @@ GAMES_LIST = [
     "Deep Rock Galactic", "Risk of Rain 2", "Left 4 Dead 2"
 ]
 
+# --- BOT EVENTS ---
+
+# Global error handler
 @bot.event
 async def on_command_error(ctx, error):
     """Handle command errors gracefully"""
@@ -123,6 +131,7 @@ async def on_command_error(ctx, error):
     else:
         print(f"Error: {error}")
 
+# Fires when the bot connects to Discord
 @bot.event
 async def on_ready():
     print(f'{bot.user} has landed and is ready for shenanigans!')
@@ -130,6 +139,7 @@ async def on_ready():
     # Set bot status
     await bot.change_presence(activity=discord.Game(name="with propane accessories"))
 
+# Fires on every message received by the bot
 @bot.event
 async def on_message(message):
     if message.author == bot.user:
@@ -140,11 +150,11 @@ async def on_message(message):
     # Custom Emote Reactions based on keywords
     reactions = {
         # King of the Hill reactions
-        'propane': ['🔥', '🏈', '⛽'],
-        'hank': ['🏈', '🔥'],
+        'propane': ['🔥', '🍖', '⛽'],
+        'hank': ['🍖', '🔥'],
         'dale': ['🕶️', '🐛', '🚬'],
         'pocket sand': ['💨', '🏜️'],
-        'texas': ['🤠', '🏈', '🔥'],
+        'texas': ['🤠', '🍖', '🔥'],
         'lawn': ['🌱', '🚜'],
         'truck': ['🚚', '🔧'],
         
@@ -218,7 +228,7 @@ async def hank_quote(ctx, *, user_input=None):
     if ai_model and user_input:
         ai_response = await get_ai_response('hank', CHARACTER_PROMPTS['hank'], user_input)
         if ai_response:
-            await ctx.send(f"🏈 **Hank Hill:** {ai_response}")
+            await ctx.send(f"🍖 **Hank Hill:** {ai_response}")
             return
     
     # Fallback to static quotes
@@ -229,8 +239,9 @@ async def hank_quote(ctx, *, user_input=None):
         "That boy ain't right, I tell you what.",
         "Sweet Lady Propane, you never let me down!"
     ]
-    await ctx.send(f"🏈 **Hank Hill:** {random.choice(quotes)}")
+    await ctx.send(f"🍖 **Hank Hill:** {random.choice(quotes)}")
 
+# Dale Gribble command
 @bot.command(name='dale', aliases=['dalegribble', 'gribble'])
 async def dale_quote(ctx, *, user_input=None):
     """Dale Gribble conspiracy wisdom - now with AI!"""
@@ -250,6 +261,7 @@ async def dale_quote(ctx, *, user_input=None):
     ]
     await ctx.send(f"🕶️ **Dale Gribble:** {random.choice(responses)}")
 
+# Propane command
 @bot.command(name='propane')
 async def propane_wisdom(ctx):
     """Sweet Lady Propane knowledge"""
@@ -320,6 +332,7 @@ FRIENDLY_ROASTS = [
     "{user} is the reason aliens won't visit us!",
 ]
 
+# Roast a member
 @bot.command(name='roast')
 async def roast_member(ctx, member: discord.Member = None):
     """Roast a server member (or yourself if no one specified)"""
@@ -335,7 +348,7 @@ async def roast_member(ctx, member: discord.Member = None):
     character = random.choice(['hank', 'dale', 'cartman', 'redgreen', 'trek', 'terminator'])
     
     character_names = {
-        'hank': '🏈 **Hank Hill**',
+        'hank': '🍖 **Hank Hill**',
         'dale': '🕶️ **Dale Gribble**', 
         'cartman': '😈 **Cartman**',
         'redgreen': '🔧 **Red Green**',
@@ -373,6 +386,7 @@ async def roast_member(ctx, member: discord.Member = None):
     roast = random.choice(ROAST_TEMPLATES[character]).format(user=member.display_name)
     await ctx.send(f"{character_names[character]}: {roast}")
 
+# Compliment a member
 @bot.command(name='compliment')
 async def compliment_member(ctx, member: discord.Member = None):
     """Give someone a compliment (because we're not all mean!)"""
@@ -383,6 +397,42 @@ async def compliment_member(ctx, member: discord.Member = None):
         await ctx.send("🤖 Aww, thanks! You're pretty great yourself!")
         return
     
+    # Always randomly select a character personality first
+    character = random.choice(['hank', 'dale', 'cartman', 'redgreen', 'trek'])
+    
+    character_names = {
+        'hank': '🍖 **Hank Hill**',
+        'dale': '🕶️ **Dale Gribble**', 
+        'cartman': '😈 **Cartman**',
+        'redgreen': '🔧 **Red Green**',
+        'trek': '🖖 **Star Trek Officer**',
+    }
+    
+    # Try AI first if available
+    if ai_model:
+        try:
+            # Create character-specific compliment prompt
+            compliment_prompts = {
+                'hank': f"{CHARACTER_PROMPTS['hank']}\n\nCompliment this Discord user named '{member.display_name}' in a wholesome, Hank Hill way. Mention propane, lawn care, or Texas. Keep it PG-13, under 150 characters, and stay in character:",
+                
+                'dale': f"{CHARACTER_PROMPTS['dale']}\n\nGive a backhanded compliment to this Discord user named '{member.display_name}' in a paranoid, conspiracy-focused way. Suggest they have good survival skills for the upcoming apocalypse. Keep it playful, under 150 characters:",
+                
+                'cartman': f"{CHARACTER_PROMPTS['cartman']}\n\nGive a self-serving compliment to this Discord user named '{member.display_name}' in Cartman's selfish, dramatic style. Make it about how they are almost as cool as him. Keep it PG-13, under 150 characters:",
+                
+                'redgreen': f"{CHARACTER_PROMPTS['redgreen']}\n\nCompliment this Discord user named '{member.display_name}' using Red Green's practical, Canadian humor. Compare their usefulness to duct tape or a trusty tool. Under 150 characters:",
+                
+                'trek': f"{CHARACTER_PROMPTS['trek']}\n\nCompliment this Discord user named '{member.display_name}' using Star Trek technical language. Analyze their 'efficiency readings' or 'logic systems'. Keep it sci-fi and under 150 characters:",
+            }
+            
+            response = ai_model.generate_content(compliment_prompts[character])
+            await ctx.send(f"{character_names[character]}: {response.text.strip()}")
+            return
+            
+        except Exception as e:
+            print(f"AI Compliment Error: {e}")
+            # Fall through to template system
+    
+    # Fallback to template compliments if AI fails or isn't available
     compliments = [
         f"{member.display_name} is cooler than the other side of the pillow!",
         f"{member.display_name} could survive a zombie apocalypse with just their wit!",
@@ -393,22 +443,24 @@ async def compliment_member(ctx, member: discord.Member = None):
         f"{member.display_name} could probably talk their way out of a Predator hunt!",
     ]
     
-    await ctx.send(f"✨ {random.choice(compliments)}")
+    await ctx.send(f"✨ {random.choice(compliments})")
 
+# Roast the user who runs the command
 @bot.command(name='roastme')
 async def roast_self(ctx):
     """Roast yourself, you masochist"""
     await roast_member(ctx, ctx.author)
 
 # EMOTE TESTING COMMAND
+# Test emote reactions for a keyword
 @bot.command(name='emote', aliases=['react', 'emoji'])
 async def test_emote(ctx, *, keyword):
     """Test what emotes a keyword would trigger"""
     keyword = keyword.lower()
     
     reactions = {
-        'propane': ['🔥', '🏈', '⛽'], 'hank': ['🏈', '🔥'], 'dale': ['🕶️', '🐛', '🚬'],
-        'pocket sand': ['💨', '🏜️'], 'texas': ['🤠', '🏈', '🔥'], 'lawn': ['🌱', '🚜'],
+        'propane': ['🔥', '🍖', '⛽'], 'hank': ['🍖', '🔥'], 'dale': ['🕶️', '🐛', '🚬'],
+        'pocket sand': ['💨', '🏜️'], 'texas': ['🤠', '🍖', '🔥'], 'lawn': ['🌱', '🚜'],
         'truck': ['🚚', '🔧'], 'cartman': ['😈', '🍔', '👑'], 'respect': ['👮‍♂️', '😈'],
         'authoritah': ['👮‍♂️', '😤'], 'kenny': ['💀', '👻'], 'oh my god': ['😱', '💀'],
         'duct tape': ['🔧', '📏', '🛠️'], 'handyman': ['🔨', '🔧'], 'hockey': ['🏒', '🇨🇦'],
@@ -432,6 +484,8 @@ async def test_emote(ctx, *, keyword):
                 pass
     else:
         await ctx.send(f"**'{keyword}'** doesn't trigger any special reactions. Try: propane, hank, dale, cartman, beer, ai, etc.")
+
+# General purpose AI chat command
 @bot.command(name='ai', aliases=['chat', 'ask'])
 async def ai_chat(ctx, *, question):
     """Ask the AI anything (in the style of your favorite characters)"""
@@ -440,26 +494,28 @@ async def ai_chat(ctx, *, question):
         return
     
     try:
-        # Random character style for general AI responses
-        characters = ['hank', 'dale', 'cartman', 'redgreen', 'trek']
-        character = random.choice(characters)
+        # # Random character style for general AI responses
+        # characters = ['hank', 'dale', 'cartman', 'redgreen', 'trek']
+        # character = random.choice(characters)
         
-        prompt = f"{CHARACTER_PROMPTS[character]}\n\nUser asked: '{question}'\n\nRespond in character, but try to actually answer their question:"
+        prompt = f"User asked: '{question}'\n\nRespond as a default chatbot that is somewhat sassy and not worried about being Politically correct (not a specific persona), but try to actually engage with and answer their question."
         response = ai_model.generate_content(prompt)
         
-        character_names = {
-            'hank': '🏈 **Hank Hill (AI)**',
-            'dale': '🕶️ **Dale Gribble (AI)**', 
-            'cartman': '😈 **Cartman (AI)**',
-            'redgreen': '🔧 **Red Green (AI)**',
-            'trek': '🖖 **Star Trek Officer (AI)**'
-        }
+        # character_names = {
+        #     'hank': '🍖 **Hank Hill (AI)**',
+        #     'dale': '🕶️ **Dale Gribble (AI)**', 
+        #     'cartman': '😈 **Cartman (AI)**',
+        #     'redgreen': '🔧 **Red Green (AI)**',
+        #     'trek': '🖖 **Star Trek Officer (AI)**'
+        # }
         
-        await ctx.send(f"{character_names[character]}: {response.text.strip()}")
+        await ctx.send(f"🤖 **AI:** {response.text.strip()}")
         
     except Exception as e:
         await ctx.send(f"🤖 AI Error: Something went wrong! Try again later.")
         print(f"AI Error: {e}")
+
+# Cartman command
 @bot.command(name='cartman', aliases=['eric', 'ericcartman'])
 async def cartman_quote(ctx, *, user_input=None):
     """Cartman being Cartman - now with AI!"""
@@ -525,6 +581,8 @@ async def star_trek_solution(ctx, *, problem=None):
         await ctx.send(f"🖖 **Bridge Officer:** {random.choice(STAR_TREK_SOLUTIONS)}")
 
 # GAME SELECTION COMMANDS
+
+# Pick a random game
 @bot.command(name='whatgame')
 async def random_game(ctx):
     """Pick a random game to play"""
@@ -532,6 +590,7 @@ async def random_game(ctx):
     emojis = ["🎮", "🕹️", "🎯", "🏆", "⚔️"]
     await ctx.send(f"{random.choice(emojis)} **Game Night Selection:** {game}")
 
+# Start a vote for games
 @bot.command(name='gamevote')
 async def game_vote(ctx, *games):
     """Start a vote for what game to play"""
@@ -555,6 +614,7 @@ async def game_vote(ctx, *games):
         await message.add_reaction(emojis[i])
 
 # TERMINATOR COMMANDS
+# Terminator command
 @bot.command(name='terminate')
 async def threat_assessment(ctx, *, target=None):
     """Terminator threat assessment"""
@@ -565,6 +625,7 @@ async def threat_assessment(ctx, *, target=None):
         await ctx.send("🤖 **T-800:** I need your clothes, your boots, and your motorcycle.")
 
 # FLUBBER COMMAND
+# Make text bouncy
 @bot.command(name='flubber')
 async def flubberfy(ctx, *, text):
     """Make text bouncy like Flubber!"""
@@ -582,13 +643,15 @@ async def flubberfy(ctx, *, text):
         else:
             bouncy_text += char
     
-    await ctx.send(f"🟢 **FLUBBER BOUNCE:** {bouncy_text} *boing boing boing*")
+    #await ctx.send(f"🟢 **FLUBBER BOUNCE:** {bouncy_text} *boing boing boing*")
+    await ctx.send(f"This was a bad idea")
 
 # BEER COMMAND
+# Get a beer recommendation
 @bot.command(name='beer')
-async def beer_recommendation(ctx):
-    """Get a beer recommendation"""
-    beers = [
+async def beer_recommendation(ctx, *, preferences: str = None):
+    """Get a beer recommendation, with AI power!"""
+    fallback_beers = [
         "Alamo Beer (if you can find it)",
         "A nice cold Budweiser",
         "Whatever's cheapest",
@@ -597,21 +660,58 @@ async def beer_recommendation(ctx):
         "The one in your hand",
         "Red Green's homemade brew (proceed with caution)"
     ]
-    await ctx.send(f"🍺 **Beer Recommendation:** {random.choice(beers)}")
+
+    # Try AI first if available
+    if ai_model:
+        try:
+            # Create a prompt for the AI
+            if preferences:
+                prompt = f"You are a sassy, slightly unhinged but knowledgeable bartender. A user wants a beer recommendation. They prefer: '{preferences}'. Give them a funny, in-character recommendation for a real or fictional beer that fits their preference. Keep it short and witty."
+            else:
+                prompt = "You are a sassy, slightly unhinged but knowledgeable bartender. A user wants a beer recommendation. Give them a funny, in-character recommendation for a real or fictional beer. Keep it short and witty."
+            
+            response = ai_model.generate_content(prompt)
+            ai_recommendation = response.text.strip()
+            
+            if ai_recommendation:
+                await ctx.send(f"🍺 **Bartender AI says:** {ai_recommendation}")
+                return
+        except Exception as e:
+            print(f"AI Beer Error: {e}")
+            # Fall through to the static list if AI fails
+    
+    # Fallback to static list if AI is not available or fails
+    await ctx.send(f"🍺 **Beer Recommendation:** {random.choice(fallback_beers)}")
 
 # CONSPIRACY/ALEX JONES PARODY
+# Generate a conspiracy theory
 @bot.command(name='conspiracy')
-async def conspiracy_theory(ctx):
-    """Generate a ridiculous conspiracy theory"""
-    subjects = ["The government", "Big Tech", "Aliens", "The lizard people", "Chemtrails", "5G towers"]
-    actions = ["are turning", "have infiltrated", "are controlling", "are monitoring", "have replaced"]
-    objects = ["our toasters", "the water supply", "social media", "the birds", "our dreams", "the weather"]
-    reasons = ["to make us buy more stuff", "for interdimensional reasons", "to control our minds", "because they're bored", "to harvest our data", "for the lulz"]
+async def conspiracy_theory(ctx, *, topic: str = None):
+    """Generate a ridiculous conspiracy theory in the style of Alex Jones."""
+    # AI-first approach
+    if ai_model:
+        try:
+            # Use the get_ai_response helper with the 'alexjones' persona
+            # The user's topic (or a generic prompt) is passed as the user_input
+            ai_response = await get_ai_response('alexjones', '', topic if topic else "a new conspiracy about the globalists")
+            if ai_response:
+                await ctx.send(f"🚨 **INFOWARS ALERT:** {ai_response}")
+                return
+        except Exception as e:
+            print(f"AI Conspiracy Error: {e}")
+            # Fall through to the static generator if AI fails
+
+    # Fallback to static generator, now with more Alex Jones flavor
+    subjects = ["The globalists", "The deep state", "The new world order", "The interdimensional vampires", "Big Pharma"]
+    actions = ["are turning", "have infiltrated", "are controlling", "are putting chemicals in"]
+    objects = ["the water supply", "the school lunches", "the 5G towers", "the birds", "our DNA"]
+    reasons = ["to make us docile", "to create a one-world government", "to lower our testosterone", "to harvest our life-force", "to turn the frogs gay"]
     
-    theory = f"{random.choice(subjects)} {random.choice(actions)} {random.choice(objects)} {random.choice(reasons)}!"
-    await ctx.send(f"🛸 **BREAKING:** {theory}\n*This message will self-destruct in 10 seconds*")
+    theory = f"Folks, listen to me! {random.choice(subjects)} {random.choice(actions)} {random.choice(objects)} {random.choice(reasons)}! It's a war for your mind!"
+    await ctx.send(f"🌍 **INFOWARS ALERT:** {theory}")
 
 # HELP COMMAND OVERRIDE
+# Custom help command
 @bot.remove_command('help')
 @bot.command(name='help')
 async def custom_help(ctx):
