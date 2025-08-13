@@ -28,7 +28,7 @@ class SocialCommands(commands.Cog):
             member = ctx.author
         
         # Don't roast the bot itself
-        if member == bot.user:
+        if member == self.bot.user:
             await ctx.send("🤖 Nice try, but I'm unroastable. I'm made of pure digital perfection!")
             return
         
@@ -129,20 +129,52 @@ class SocialCommands(commands.Cog):
                 return
         
         # Fallback compliments
-        fallback_compliments = [
-            f"{member.display_name} is cooler than the other side of the pillow!",
-            f"{member.display_name} could survive a zombie apocalypse with just their wit!",
-            f"{member.display_name} makes Hank Hill proud with their propane enthusiasm!",
-            f"{member.display_name} is the kind of person Red Green would trust with his duct tape!",
-            f"{member.display_name} has more game than a GameStop!",
-            f"{member.display_name} is like pizza - even when they're bad, they're still pretty good!",
-            f"{member.display_name} could probably talk their way out of a Predator hunt!",
-            f"{member.display_name} has the tactical awareness of Solid Snake!",
-            f"{member.display_name} possesses the wisdom to avoid all nine circles of hell!",
-            f"{member.display_name} has the strength and honor that would make Kratos nod in approval!"
-        ]
+        fallback_compliments = {
+            'hank': [
+                "{user} is a fine, upstanding citizen, I tell you what. Probably uses propane.",
+                "That {user} has a good head on their shoulders. Solid handshake, too.",
+                "I'd trust {user} to watch my lawn. That's high praise."
+            ],
+            'dale': [
+                "{user} is one of the few who's truly awake. Keep your eyes open, friend.",
+                "I'd trust {user} in my bunker. They've got the right kind of paranoia.",
+                "Gih! {user} has the tactical awareness to spot a black helicopter from a mile away."
+            ],
+            'cartman': [
+                "You know what, {user}? You're... you're almost as cool as me. Almost.",
+                "{user} isn't a total butthole, which is pretty rare. Respect.",
+                "Okay, fine, {user} is pretty kewl. But I'm still the boss."
+            ],
+            'redgreen': [
+                "{user} is more useful than a roll of duct tape at a family reunion.",
+                "If {user} was a tool, they'd be the whole toolbox. Keep your stick on the ice.",
+                "That {user} is as reliable as a '78 pickup truck held together with hope and zip ties."
+            ],
+            'trek': [
+                "Fascinating. {user}'s logic and efficiency are highly commendable.",
+                "{user}'s contributions to this crew are... significant. Well done.",
+                "The cognitive readings from {user} are off the charts, Captain. In a good way."
+            ],
+            'snake': [
+                "{user} has the instincts of a true soldier. I'd have them on my team.",
+                "Good situational awareness, {user}. You'd do well in the field.",
+                "You've got potential, {user}. Don't waste it."
+            ],
+            'kratos': [
+                "Hmph. {user} fights with honor. A rare quality.",
+                "You have the spirit of a true warrior, {user}. Do not let the gods break it.",
+                "BOY. Learn from {user}. They know strength."
+            ],
+            'dante': [
+                "{user} walks a righteous path. May it lead you from the darkness.",
+                "There is a light of virtue in {user} that even the damned can see.",
+                "The soul of {user} shines with a hope for redemption."
+            ]
+        }
         
-        await ctx.send(f"✨ {random.choice(fallback_compliments)}")
+        compliments = fallback_compliments.get(character, ["{user} is pretty cool, I guess."])
+        compliment = random.choice(compliments).format(user=member.display_name)
+        await ctx.send(f"{char_info['name']}: {compliment}")
     
     @commands.command(name='roastme')
     async def roast_self(self, ctx):
