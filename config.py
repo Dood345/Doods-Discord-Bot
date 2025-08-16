@@ -215,4 +215,4 @@ class BotConfig:
     }
     
     # Reaction chance (percentage)
-    REACTION_CHANCE = 50  # 25% chance to react to keywords
+    REACTION_CHANCE = 25  # 25% chance to react to keywords
