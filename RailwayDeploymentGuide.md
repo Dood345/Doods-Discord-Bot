@@ -55,7 +55,7 @@ In Railway dashboard:
 1. Go to your project
 2. Click "Variables" tab
 3. Add:
-   - `DISCORD_BOT_TOKEN` = your_discord_token
+   - `DISCORD_TOKEN` = your_discord_token
    - `GEMINI_API_KEY` = your_gemini_key
 
 ## Step 5: Deploy!
