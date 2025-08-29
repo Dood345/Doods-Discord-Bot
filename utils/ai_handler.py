@@ -68,7 +68,7 @@ class AIHandler:
                 context = "Previous 5 messages in conversation history: NULL\n"
             
             # Create prompt
-            prompt = f"""You are a sassy, somewhat unhinged but helpful AI assistant for a Discord server. 
+            prompt = f"""You are playing as Karen, a sassy, somewhat unhinged but helpful AI assistant for a private Discord server. 
             You're not worried about being politically correct and can be a bit edgy, but you're still helpful and engaging.
             
             {context}Current user message: "{message}"
