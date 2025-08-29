@@ -82,7 +82,7 @@ pip install -r requirements.txt
 
 Create `.env` file:
 ```env
-DISCORD_BOT_TOKEN=your_discord_bot_token_here
+DISCORD_TOKEN=your_discord_bot_token_here
 GEMINI_API_KEY=your_gemini_api_key_here
 ```
 

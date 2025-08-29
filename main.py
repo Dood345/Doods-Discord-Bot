@@ -5,6 +5,8 @@ import os
 import logging
 from datetime import datetime
 from dotenv import load_dotenv
+from flask import Flask
+from threading import Thread
 
 # Import our custom modules
 from config import BotConfig
@@ -15,12 +17,31 @@ from commands.social_commands import SocialCommands
 from commands.game_commands import GameCommands
 from commands.misc_commands import MiscCommands
 
+
 # Load environment variables
 load_dotenv()
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+
+# KEEP ALIVE for free hosting solutions
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "I'm alive"
+
+def run():
+  # Cloud Run provides the PORT environment variable
+  port = int(os.environ.get("PORT", 8080))
+  app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
 
 class SatansBot(commands.Bot):
     def __init__(self):
@@ -83,13 +104,15 @@ class SatansBot(commands.Bot):
             logger.error(f"Command error: {error}")
             await ctx.send("🤖 Something went wrong! The error has been logged.")
 
-def main():
+if __name__ == "__main__":
     """Main function to run the bot"""
-    token = os.getenv('DISCORD_BOT_TOKEN')
+    token = os.getenv('DISCORD_TOKEN')
     if not token:
-        logger.error("DISCORD_BOT_TOKEN not found in .env file")
-        return
+        logger.error("DISCORD_TOKEN not found in .env file")
+        exit(1)
     
+    keep_alive() # Starts the web server
+
     bot = SatansBot()
     
     try:
@@ -101,6 +124,3 @@ def main():
         logger.error(f"Bot crashed: {e}")
     finally:
         logger.info("Bot shutdown complete!")
-
-if __name__ == "__main__":
-    main()
