@@ -1,5 +1,7 @@
 # Deploy Discord Bot to Railway.app
 
+Switched to render.com for their free tier, despite the spindown issues. You can still use railway.app for 30days of uptime.
+
 ## Step 1: Prepare Your Code
 
 Create these files in your project directory:
