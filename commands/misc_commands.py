@@ -202,7 +202,7 @@ class MiscCommands(commands.Cog):
         
         # Show all commands
         embed = discord.Embed(
-            title="🤖 Satan's Shenanigans Bot Commands",
+            title="🤖 Jesus' Shenanigans Bot Commands",
             description="All characters use AI responses when possible, with fallbacks!",
             color=0xff6600
         )

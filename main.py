@@ -43,7 +43,7 @@ def keep_alive():
     t.start()
 
 
-class SatansBot(commands.Bot):
+class DoodsBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
         intents.message_content = True
@@ -113,7 +113,7 @@ if __name__ == "__main__":
     
     keep_alive() # Starts the web server
 
-    bot = SatansBot()
+    bot = DoodsBot()
     
     try:
         logger.info("Starting bot...")
