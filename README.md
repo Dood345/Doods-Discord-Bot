@@ -1,4 +1,4 @@
-# Satan's Shenanigans Discord Bot 🤖🔥
+# Doods's Shenanigans Discord Bot 🤖🔥
 
 A character-based Discord bot with AI personality responses, conversation memory, and maximum chaos potential! Features iconic characters from King of the Hill, South Park, Red Green Show, Star Trek, Metal Gear Solid, God of War, and Dante's Inferno.
 
