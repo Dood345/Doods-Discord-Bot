@@ -270,7 +270,4 @@ Built for small groups of friends who want maximum entertainment value.
 
 ---
 
-[![Actions Status][gh-actions-badge]][gh-actions]
-
-[gh-actions]: https://github.com/Dood345/Doods-Discord-Bot/actions
-[gh-actions-badge]: https://github.com/Dood345/Doods-Discord-Bot/workflows/Build%20Verficiation/badge.svg
+[![Build Verification](https://github.com/Dood345/Doods-Discord-Bot/actions/workflows/build.yml/badge.svg)](https://github.com/Dood345/Doods-Discord-Bot/actions/workflows/build.yml)
