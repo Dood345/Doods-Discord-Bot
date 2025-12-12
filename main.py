@@ -49,7 +49,7 @@ class DoodsBot(commands.Bot):
         intents.message_content = True
         
         super().__init__(
-            command_prefix='!',
+            command_prefix='/',
             intents=intents,
             case_insensitive=True,
             help_command=None  # We'll use custom help
