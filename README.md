@@ -267,3 +267,7 @@ Built for small groups of friends who want maximum entertainment value.
 
 **Ready to cause maximum shenanigans?** 🔥  
 *"That's a clean-burning bot, I tell you what!"* - Hank Hill (probably)
+
+---
+
+[![Build Verification](https://github.com/Dood345/Doods-Discord-Bot/actions/workflows/build.yml/badge.svg)](https://github.com/Dood345/Doods-Discord-Bot/actions/workflows/build.yml)
