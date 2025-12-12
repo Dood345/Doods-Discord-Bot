@@ -209,51 +209,51 @@ class MiscCommands(commands.Cog):
         
         embed.add_field(
             name="👥 Social Features", 
-            value="`!roast @user` - Roast someone\n"
-                  "`!roastme` - Roast yourself\n"
-                  "`!compliment @user` - Be nice for once", 
+            value="`/roast @user` - Roast someone\n"
+                  "`/roastme` - Roast yourself\n"
+                  "`/compliment @user` - Be nice for once", 
             inline=False
         )
         
         embed.add_field(
             name="🎭 Character AI (use with messages!)", 
-            value="`!hank [message]` - Hank Hill wisdom\n"
-                  "`!dale [message]` - Conspiracy theories\n"
-                  "`!cartman [message]` - Cartman being Cartman\n"
-                  "`!redgreen [problem]` - Duct tape solutions\n"
-                  "`!trek [problem]` - Star Trek tech support\n"
-                  "`!snake [message]` - Solid Snake tactics\n"
-                  "`!kratos [message]` - God of War rage\n"
-                  "`!dante [message]` - Infernal wisdom", 
+            value="`/hank [message]` - Hank Hill wisdom\n"
+                  "`/dale [message]` - Conspiracy theories\n"
+                  "`/cartman [message]` - Cartman being Cartman\n"
+                  "`/redgreen [problem]` - Duct tape solutions\n"
+                  "`/trek [problem]` - Star Trek tech support\n"
+                  "`/snake [message]` - Solid Snake tactics\n"
+                  "`/kratos [message]` - God of War rage\n"
+                  "`/dante [message]` - Infernal wisdom", 
             inline=False
         )
         
         embed.add_field(
             name="🎮 Games & Fun", 
-            value="`!whatgame` - Pick a random game\n"
-                  "`!gamevote [games]` - Vote on games\n"
-                  "`!gameslist` - Show all available games\n"
-                  "`!flubber <text>` - Bouncy text\n"
-                  "`!beer [preferences]` - Beer recommendations", 
+            value="`/whatgame` - Pick a random game\n"
+                  "`/gamevote [games]` - Vote on games\n"
+                  "`/gameslist` - Show all available games\n"
+                  "`/flubber <text>` - Bouncy text\n"
+                  "`/beer [preferences]` - Beer recommendations", 
             inline=False
         )
         
         embed.add_field(
             name="🤖 AI & Tech", 
-            value="`!ai <question>` - Ask AI anything (with memory!)\n"
-                  "`!clearhistory` - Clear your AI chat history\n"
-                  "`!terminate [target]` - Threat assessment\n"
-                  "`!conspiracy [topic]` - Generate theories", 
+            value="`/ai <question>` - Ask AI anything (with memory!)\n"
+                  "`/clearhistory` - Clear your AI chat history\n"
+                  "`/terminate [target]` - Threat assessment\n"
+                  "`/conspiracy [topic]` - Generate theories", 
             inline=False
         )
         
         embed.add_field(
             name="😄 Extras", 
-            value="`!propane` - Propane facts\n"
-                  "`!emote <keyword>` - Test emoji reactions\n"
-                  "`!keywords` - Show all reaction keywords\n"
-                  "`!ping` - Check bot latency\n"
-                  "`!about` - Bot information", 
+            value="`/propane` - Propane facts\n"
+                  "`/emote <keyword>` - Test emoji reactions\n"
+                  "`/keywords` - Show all reaction keywords\n"
+                  "`/ping` - Check bot latency\n"
+                  "`/about` - Bot information", 
             inline=False
         )
         
