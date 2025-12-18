@@ -1,9 +1,14 @@
 """Miscellaneous commands for the Discord bot"""
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 import random
 import logging
+import qrcode
+import io
+import asyncio
+from ping3 import ping
 
 logger = logging.getLogger(__name__)
 
@@ -174,9 +179,41 @@ class MiscCommands(commands.Cog):
         embed.set_footer(text="Made for maximum shenanigans! Use !help for commands.")
         await ctx.send(embed=embed)
     
+    @app_commands.command(name="qr", description="Generates a QR code for text or a link")
+    async def qr(self, interaction: discord.Interaction, content: str):
+        """Generate a QR code"""
+        # Generate QR in memory (no file saved to laptop)
+        qr = qrcode.QRCode(box_size=10, border=4)
+        qr.add_data(content)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        with io.BytesIO() as image_binary:
+            img.save(image_binary, 'PNG')
+            image_binary.seek(0)
+            await interaction.response.send_message(
+                f"Here is your QR code for: `{content}`",
+                file=discord.File(fp=image_binary, filename='qrcode.png')
+            )
+
+    @app_commands.command(name="isup", description="Checks if a website or IP is reachable")
+    async def isup(self, interaction: discord.Interaction, target: str):
+        """Check if a site/IP is up"""
+        await interaction.response.defer() # Give us time to ping
+        try:
+            # Simple ping check
+            response_time = ping(target, timeout=2)
+            if response_time:
+                await interaction.followup.send(f"🟢 **{target}** is UP! (Response: {response_time*1000:.0f}ms)")
+            else:
+                await interaction.followup.send(f"🔴 **{target}** appears to be DOWN.")
+        except Exception as e:
+            await interaction.followup.send(f"⚠️ Error checking {target}: {str(e)}")
+
     # Custom help command
     @commands.command(name='help')
     async def custom_help(self, ctx, *, command_name=None):
+
         """Show all available commands or details about a specific command"""
         if command_name:
             # Show help for specific command
