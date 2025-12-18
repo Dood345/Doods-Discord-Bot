@@ -15,6 +15,7 @@ load_dotenv()
 from config import BotConfig
 from utils.ai_handler import AIHandler
 from utils.reaction_handler import ReactionHandler
+from utils.database import DatabaseHandler
 from commands.character_commands import CharacterCommands
 from commands.social_commands import SocialCommands
 from commands.game_commands import GameCommands
@@ -58,7 +59,11 @@ class DoodsBot(commands.Bot):
         
         # Initialize components
         self.config = BotConfig()
-        self.ai_handler = AIHandler()
+        
+        # Initialize Database
+        self.db = DatabaseHandler()
+        
+        self.ai_handler = AIHandler(self.db)
         self.reaction_handler = ReactionHandler()
         
         # User conversation histories for AI
@@ -66,6 +71,9 @@ class DoodsBot(commands.Bot):
         
     async def setup_hook(self):
         """Called when the bot is starting up"""
+        # Setup Database Tables
+        self.db.setup_tables()
+        
         # Add cogs
         await self.add_cog(CharacterCommands(self))
         await self.add_cog(SocialCommands(self))

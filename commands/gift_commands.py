@@ -10,31 +10,12 @@ logger = logging.getLogger(__name__)
 class GiftCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.db_path = 'doodlab.db'
-        self._init_db()
-
-    def _init_db(self):
-        """Initialize the database"""
-        try:
-            conn = sqlite3.connect(self.db_path)
-            c = conn.cursor()
-            # Table for gifts: ID, User who wants it, Item Name, URL, User who claimed it (can be NULL)
-            c.execute('''CREATE TABLE IF NOT EXISTS gifts
-                        (id INTEGER PRIMARY KEY AUTOINCREMENT, 
-                        user_id INTEGER, 
-                        item_name TEXT, 
-                        link TEXT, 
-                        claimed_by INTEGER)''')
-            conn.commit()
-            conn.close()
-            logger.info("Gift database initialized")
-        except Exception as e:
-            logger.error(f"Failed to initialize gift database: {e}")
+        # DB init is handled in main.py via bot.db.setup_tables()
 
     @app_commands.command(name="gift_add", description="Add an item to your wishlist")
     async def gift_add(self, interaction: discord.Interaction, item: str, link: str = "No Link"):
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.bot.db.get_connection()
             c = conn.cursor()
             c.execute("INSERT INTO gifts (user_id, item_name, link, claimed_by) VALUES (?, ?, ?, NULL)", 
                     (interaction.user.id, item, link))
@@ -48,7 +29,7 @@ class GiftCommands(commands.Cog):
     @app_commands.command(name="gift_view", description="View a friend's wishlist")
     async def gift_view(self, interaction: discord.Interaction, user: discord.User):
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.bot.db.get_connection()
             c = conn.cursor()
             c.execute("SELECT id, item_name, link, claimed_by FROM gifts WHERE user_id = ?", (user.id,))
             items = c.fetchall()
@@ -76,7 +57,7 @@ class GiftCommands(commands.Cog):
     @app_commands.command(name="gift_claim", description="Mark an item as purchased (The owner won't know it was you)")
     async def gift_claim(self, interaction: discord.Interaction, item_id: int):
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.bot.db.get_connection()
             c = conn.cursor()
             
             # Check if already claimed
@@ -102,7 +83,7 @@ class GiftCommands(commands.Cog):
     @app_commands.command(name="gift_remove", description="Remove an item from your wishlist")
     async def gift_remove(self, interaction: discord.Interaction, item_id: int):
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.bot.db.get_connection()
             c = conn.cursor()
             
             # Check if item exists and belongs to user
@@ -126,7 +107,7 @@ class GiftCommands(commands.Cog):
     @app_commands.command(name="gift_unclaim", description="Unclaim an item you previously claimed")
     async def gift_unclaim(self, interaction: discord.Interaction, item_id: int):
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self.bot.db.get_connection()
             c = conn.cursor()
             
             # Check if item exists and was claimed by user
