@@ -25,12 +25,13 @@ class RequestView(discord.ui.View):
         button.disabled = True
         await interaction.response.edit_message(view=self)
         
-        # Prepare payload
+        # Prepare payload, userId = 2 for discordBot user
         headers = {'X-Api-Key': self.api_key}
         payload = {
             "mediaId": self.media_id,
             "mediaType": self.media_type,
-            "is4k": False
+            "is4k": False,
+            "userId": 2
         }
 
         # Handling for TV Shows (Must specify seasons)
