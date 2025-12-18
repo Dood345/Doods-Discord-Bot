@@ -6,3 +6,4 @@ PyNaCl
 aiohttp
 qrcode[pil]
 ping3
+websocket-client
