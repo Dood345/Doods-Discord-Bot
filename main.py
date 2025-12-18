@@ -88,10 +88,23 @@ class DoodsBot(commands.Bot):
         
         # Sync Slash Commands
         try:
-            guild = discord.Object(id=self.config.SERVER_ID)
-            self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
-            logger.info(f"Slash commands synced to guild {self.config.SERVER_ID}")
+            # 1. Instant Sync for Development/Home Servers
+            if self.config.SERVER_IDS:
+                for server_id in self.config.SERVER_IDS:
+                    try:
+                        guild = discord.Object(id=server_id)
+                        self.tree.copy_global_to(guild=guild)
+                        await self.tree.sync(guild=guild)
+                        logger.info(f"⚡ Slash commands synced INSTANTLY to guild {server_id}")
+                    except Exception as e:
+                        logger.error(f"Failed to sync to guild {server_id}: {e}")
+            else:
+                logger.warning("No SERVER_ID found in .env - Skipping instant sync.")
+
+            # 2. Global Sync (Take ~1 hour, for public usage)
+            await self.tree.sync()
+            logger.info(f"🌍 Global slash commands synced (may take up to 1 hour to propagate)")
+            
         except Exception as e:
             logger.error(f"Failed to sync slash commands: {e}")
     
