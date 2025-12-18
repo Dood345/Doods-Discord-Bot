@@ -4,6 +4,7 @@ from discord.ext import commands, tasks
 import aiohttp
 import asyncio
 import logging
+import io
 from ping3 import ping
 from config import BotConfig
 
@@ -57,6 +58,18 @@ class HomeLabCommands(commands.Cog):
     def cog_unload(self):
         self.update_printer_status.cancel()
 
+    async def check_auth(self, interaction: discord.Interaction) -> bool:
+        """Check if user is authorized to use homelab commands"""
+        user_id = interaction.user.id
+        username = interaction.user.name.lower()
+        
+        # Check ID match or Username match
+        if user_id == BotConfig.OWNER_ID or username in BotConfig.ALLOWED_USERS:
+            return True
+            
+        await interaction.response.send_message("❌ **Access Denied**: Authorized Personnel Only ⛔", ephemeral=True)
+        return False
+
     @tasks.loop(seconds=60)
     async def update_printer_status(self):
         """Monitor 3D printer status"""
@@ -86,6 +99,9 @@ class HomeLabCommands(commands.Cog):
     @app_commands.command(name="doodlab", description="Check status of Doodlab internal services")
     async def doodlab_status(self, interaction: discord.Interaction):
         """Check status of internal services"""
+        if not await self.check_auth(interaction):
+            return
+
         await interaction.response.defer()
         
         embed = discord.Embed(
@@ -107,9 +123,68 @@ class HomeLabCommands(commands.Cog):
         embed.description = "\n".join(results)
         await interaction.followup.send(embed=embed)
 
+    @app_commands.command(name="printer", description="Check 3D Printer Status")
+    async def printer_status(self, interaction: discord.Interaction):
+        """Check actual 3D printer status"""
+        if not await self.check_auth(interaction):
+            return
+
+        if not BotConfig.PRINTER_HOST:
+            await interaction.response.send_message("❌ Printer Host not configured!", ephemeral=True)
+            return
+
+        await interaction.response.defer()
+        
+        url = f"http://{BotConfig.PRINTER_HOST}/printer/objects/query?print_stats"
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=5) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        stats = data.get('result', {}).get('status', {}).get('print_stats', {})
+                        state = stats.get('state', 'Unknown')
+                        filename = stats.get('filename', 'None')
+                        print_duration = stats.get('print_duration', 0)
+                        
+                        # Format duration
+                        hours = int(print_duration // 3600)
+                        minutes = int((print_duration % 3600) // 60)
+                        time_str = f"{hours}h {minutes}m"
+                        
+                        color = 0x2ecc71 if state == "printing" else 0x95a5a6
+                        
+                        embed = discord.Embed(title="🖨️ 3D Printer Status", color=color)
+                        embed.add_field(name="State", value=state.upper(), inline=True)
+                        
+                        if state == "printing":
+                            embed.add_field(name="File", value=filename, inline=True)
+                            embed.add_field(name="Duration", value=time_str, inline=True)
+                        
+                        # Try to get snapshot
+                        files = []
+                        if BotConfig.PRINTER_WEBCAM_URL:
+                            try:
+                                async with session.get(BotConfig.PRINTER_WEBCAM_URL, timeout=2) as img_resp:
+                                    if img_resp.status == 200:
+                                        data = await img_resp.read()
+                                        files.append(discord.File(io.BytesIO(data), filename="snapshot.jpg"))
+                                        embed.set_image(url="attachment://snapshot.jpg")
+                            except Exception as e:
+                                logger.debug(f"Failed to fetch snapshot: {e}")
+
+                        await interaction.followup.send(embed=embed, files=files)
+                    else:
+                        await interaction.followup.send(f"⚠️ Could not reach printer (Status: {response.status})")
+        except Exception as e:
+            logger.error(f"Printer Check Failed: {e}")
+            await interaction.followup.send(f"❌ Error checking printer: {str(e)}")
+
     @app_commands.command(name="request", description="Search & Request media from Overseerr")
     async def request_media(self, interaction: discord.Interaction, query: str):
         """Search Overseerr and request media"""
+        if not await self.check_auth(interaction):
+            return
+
         if not BotConfig.OVERSEERR_API_KEY:
             await interaction.response.send_message("❌ Overseerr API Key not configured!", ephemeral=True)
             return
@@ -158,6 +233,9 @@ class HomeLabCommands(commands.Cog):
     @app_commands.command(name="queue", description="View active downloads in valid *arr apps")
     async def view_queue(self, interaction: discord.Interaction):
         """View active downloads across *arr apps"""
+        if not await self.check_auth(interaction):
+            return
+            
         await interaction.response.defer()
         
         embed = discord.Embed(title="📉 Download Queue", color=0x3498db)
