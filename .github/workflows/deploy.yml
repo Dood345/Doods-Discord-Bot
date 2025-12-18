@@ -1,0 +1,42 @@
+name: Deploy to Bare Metal (Local Secrets)
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Deploy Code (Preserve .env)
+      # rsync flags:
+      # -a : Archive mode (keep permissions/dates)
+      # -v : Verbose
+      # --delete : Remove old files that were deleted from git (keeps folder clean)
+      # --exclude '.env' : CRITICAL! Do not delete or overwrite the local secrets file
+      # --exclude 'data' : CRITICAL! Do not delete the database folder
+      # --exclude 'venv' : Do not delete the python libraries
+      run: |
+        rsync -av --delete \
+          --exclude='.env' \
+          --exclude='data' \
+          --exclude='venv' \
+          --exclude='.git' \
+          ./ /home/dood345/discordBot/
+
+    - name: Update Dependencies
+      run: |
+        # Create venv if it doesn't exist yet
+        if [ ! -d "/home/dood345/discordBot/venv" ]; then
+        python3 -m venv /home/dood345/discordBot/venv
+        fi
+        # Install requirements
+        /home/dood345/discordBot/venv/bin/pip install -r requirements.txt
+
+    - name: Restart Service
+      # Reload the bot so it reads the new code and the existing .env
+      run: sudo systemctl restart discordBot.service
