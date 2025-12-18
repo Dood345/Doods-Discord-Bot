@@ -25,16 +25,35 @@ class RequestView(discord.ui.View):
         button.disabled = True
         await interaction.response.edit_message(view=self)
         
-        # Send request to Overseerr
-        # Endpoint: /api/v1/request
+        # Prepare payload
         headers = {'X-Api-Key': self.api_key}
         payload = {
             "mediaId": self.media_id,
             "mediaType": self.media_type,
-            "is4k": False,
-            "seasons": "all" if self.media_type == 'tv' else [] # Default to all seasons for simplicity
+            "is4k": False
         }
+
+        # Handling for TV Shows (Must specify seasons)
+        if self.media_type == 'tv':
+            try:
+                # We need to fetch the show details to know the season numbers!
+                # Result from /search doesn't always have full season data
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f"{self.url}/api/v1/tv/{self.media_id}", headers=headers) as detail_resp:
+                        if detail_resp.status == 200:
+                            details = await detail_resp.json()
+                            # Extract season numbers (exclude specials/season 0 if desired, but let's include all > 0)
+                            seasons_list = [s['seasonNumber'] for s in details.get('seasons', []) if s['seasonNumber'] > 0]
+                            payload['seasons'] = seasons_list
+                        else:
+                            # Fallback if fetch fails (unsafe, but better than nothing)
+                            logger.error(f"Failed to fetch TV details: {detail_resp.status}")
+                            payload['seasons'] = [1] 
+            except Exception as e:
+                logger.error(f"Error fetching TV details: {e}")
+                payload['seasons'] = [1] # Fallback
         
+        # Send Request
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(f"{self.url}/api/v1/request", headers=headers, json=payload) as resp:
@@ -45,7 +64,7 @@ class RequestView(discord.ui.View):
                     else:
                         error_text = await resp.text()
                         logger.error(f"Overseerr Request Failed: {resp.status} - {error_text}")
-                        await interaction.followup.send(f"❌ Failed to request. Check logs.", ephemeral=True)
+                        await interaction.followup.send(f"❌ Failed to request. Check logs for details ({resp.status}).", ephemeral=True)
         except Exception as e:
             logger.error(f"Request Exception: {e}")
             await interaction.followup.send("❌ Error contacting Overseerr.", ephemeral=True)
@@ -191,12 +210,13 @@ class HomeLabCommands(commands.Cog):
 
         await interaction.response.defer()
         
-        url = f"{BotConfig.OVERSEERR_URL}/api/v1/search?query={query}"
+        url = f"{BotConfig.OVERSEERR_URL}/api/v1/search?"
         headers = {'X-Api-Key': BotConfig.OVERSEERR_API_KEY}
+        params = {'query': query}
         
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=headers) as resp:
+                async with session.get(url, headers=headers, params=params) as resp:
                     if resp.status != 200:
                         await interaction.followup.send(f"❌ Error talking to Overseerr: {resp.status}")
                         return
