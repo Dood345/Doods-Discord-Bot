@@ -1,6 +1,7 @@
 """Social interaction commands for the Discord bot"""
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 import random
 import logging
@@ -21,15 +22,17 @@ class SocialCommands(commands.Cog):
             characters.remove('alexjones')
         return random.choice(characters)
     
-    @commands.command(name='roast')
-    async def roast_member(self, ctx, member: discord.Member = None):
+    @app_commands.command(name='roast', description="Roast a server member")
+    async def roast_member(self, interaction: discord.Interaction, member: discord.Member = None):
         """Roast a server member (or yourself if no one specified)"""
+        await interaction.response.defer()
+        
         if member is None:
-            member = ctx.author
+            member = interaction.user
         
         # Don't roast the bot itself
         if member == self.bot.user:
-            await ctx.send("🤖 Nice try, but I'm unroastable. I'm made of pure digital perfection!")
+            await interaction.followup.send("🤖 Nice try, but I'm unroastable. I'm made of pure digital perfection!")
             return
         
         # Select random character
@@ -40,7 +43,7 @@ class SocialCommands(commands.Cog):
         if self.ai_handler.is_available():
             ai_response = await self.ai_handler.get_roast_response(character, member.display_name)
             if ai_response:
-                await ctx.send(f"{char_info['name']}: {ai_response}")
+                await interaction.followup.send(f"{char_info['name']}: {ai_response}")
                 return
         
         # Fallback to template roasts
@@ -105,16 +108,18 @@ class SocialCommands(commands.Cog):
         
         roasts = fallback_roasts.get(character, ["{user} is... special."])
         roast = random.choice(roasts).format(user=member.display_name)
-        await ctx.send(f"{char_info['name']}: {roast}")
+        await interaction.followup.send(f"{char_info['name']}: {roast}")
     
-    @commands.command(name='compliment')
-    async def compliment_member(self, ctx, member: discord.Member = None):
+    @app_commands.command(name='compliment', description="Give someone a compliment")
+    async def compliment_member(self, interaction: discord.Interaction, member: discord.Member = None):
         """Give someone a compliment (because we're not all mean!)"""
+        await interaction.response.defer()
+
         if member is None:
-            member = ctx.author
+            member = interaction.user
         
         if member == self.bot.user:
-            await ctx.send("🤖 Aww, thanks! You're pretty great yourself!")
+            await interaction.followup.send("🤖 Aww, thanks! You're pretty great yourself!")
             return
         
         # Select random character
@@ -125,7 +130,7 @@ class SocialCommands(commands.Cog):
         if self.ai_handler.is_available():
             ai_response = await self.ai_handler.get_compliment_response(character, member.display_name)
             if ai_response:
-                await ctx.send(f"{char_info['name']}: {ai_response}")
+                await interaction.followup.send(f"{char_info['name']}: {ai_response}")
                 return
         
         # Fallback compliments
@@ -174,12 +179,13 @@ class SocialCommands(commands.Cog):
         
         compliments = fallback_compliments.get(character, ["{user} is pretty cool, I guess."])
         compliment = random.choice(compliments).format(user=member.display_name)
-        await ctx.send(f"{char_info['name']}: {compliment}")
+        await interaction.followup.send(f"{char_info['name']}: {compliment}")
     
-    @commands.command(name='roastme')
-    async def roast_self(self, ctx):
+    @app_commands.command(name='roastme', description="Roast yourself")
+    async def roast_self(self, interaction: discord.Interaction):
         """Roast yourself, you masochist"""
-        await self.roast_member(ctx, ctx.author)
+        # Forward to main roast function
+        await self.roast_member(interaction, interaction.user)
 
 async def setup(bot):
     await bot.add_cog(SocialCommands(bot))

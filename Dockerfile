@@ -1,17 +1,19 @@
-# Use an official lightweight Python image
+# Use a lightweight Python base
 FROM python:3.11-slim
 
-# Set the working directory inside the container
+# Set working directory
 WORKDIR /app
 
-# Copy the requirements file first to leverage Docker cache
-COPY requirements.txt .
+# Install system dependencies (needed for some Python packages)
+RUN apt-get update && apt-get install -y --no-install-recommends gcc libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install the Python dependencies
+# Copy requirements and install
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of your application code
+# Copy the rest of the code
 COPY . .
 
-# Command to run your bot when the container starts
+# Command to run the bot
 CMD ["python", "main.py"]
