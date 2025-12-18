@@ -1,0 +1,27 @@
+services:
+  doodlab-bot:
+    build: .
+    container_name: doodlab-bot
+    restart: unless-stopped
+    volumes:
+      # Mount the database file from the host to the container
+      - ./data:/app/data
+    environment:
+      # We will inject the token via GitHub Secrets later
+      - PRINTER_IP=${PRINTER_IP}
+      - ROUTER_IP=${ROUTER_IP}
+      - PIHOLE_IP=${PIHOLE_IP}
+      - DOODLAB_IP=${DOODLAB_IP}
+      - PLEX_IP=${PLEX_IP}
+      - PRINTER_HOST=${PRINTER_HOST}
+      - OVERSEERR_URL=${OVERSEERR_URL}
+      - RADARR_URL=${RADARR_URL}
+      - SONARR_URL=${SONARR_URL}
+      - LIDARR_URL=${LIDARR_URL}
+      - SERVER_ID=${SERVER_ID}
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OVERSEERR_API_KEY=${OVERSEERR_API_KEY}
+      - RADARR_API_KEY=${RADARR_API_KEY}
+      - SONARR_API_KEY=${SONARR_API_KEY}
+      - LIDARR_API_KEY=${LIDARR_API_KEY}
