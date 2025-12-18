@@ -1,6 +1,7 @@
 """Character-based commands for the Discord bot"""
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 import random
 import logging
@@ -25,23 +26,22 @@ class CharacterCommands(commands.Cog):
         return random.choice(quotes)
     
     # KING OF THE HILL CHARACTERS
-    @commands.command(name='hank', aliases=['hankhill'])
-    async def hank_command(self, ctx, *, user_input=None):
-        """Get a Hank Hill response - now with AI!"""
+    @app_commands.command(name='hank', description="Get a Hank Hill response")
+    async def hank_command(self, interaction: discord.Interaction, user_input: str = None):
+        await interaction.response.defer()
         response = await self._get_character_response('hank', user_input)
         char_info = self.config.CHARACTER_INFO['hank']
-        await ctx.send(f"{char_info['name']}: {response}")
+        await interaction.followup.send(f"{char_info['name']}: {response}")
     
-    @commands.command(name='dale', aliases=['dalegribble', 'gribble'])
-    async def dale_command(self, ctx, *, user_input=None):
-        """Dale Gribble conspiracy wisdom - now with AI!"""
+    @app_commands.command(name='dale', description="Dale Gribble conspiracy wisdom")
+    async def dale_command(self, interaction: discord.Interaction, user_input: str = None):
+        await interaction.response.defer()
         response = await self._get_character_response('dale', user_input)
         char_info = self.config.CHARACTER_INFO['dale']
-        await ctx.send(f"{char_info['name']}: {response}")
+        await interaction.followup.send(f"{char_info['name']}: {response}")
     
-    @commands.command(name='propane')
-    async def propane_wisdom(self, ctx):
-        """Sweet Lady Propane knowledge"""
+    @app_commands.command(name='propane', description="Sweet Lady Propane knowledge")
+    async def propane_wisdom(self, interaction: discord.Interaction):
         facts = [
             "Propane burns clean with a blue flame!",
             "Butane is a bastard gas!",
@@ -50,41 +50,41 @@ class CharacterCommands(commands.Cog):
             "I sell propane and propane accessories, I tell you what!",
             "Propane is the future, I tell you what!"
         ]
-        await ctx.send(f"🔥 **Propane Fact:** {random.choice(facts)}")
+        await interaction.response.send_message(f"🔥 **Propane Fact:** {random.choice(facts)}")
     
     # SOUTH PARK CHARACTERS
-    @commands.command(name='cartman', aliases=['eric', 'ericcartman'])
-    async def cartman_command(self, ctx, *, user_input=None):
-        """Cartman being Cartman - now with AI!"""
+    @app_commands.command(name='cartman', description="Cartman being Cartman")
+    async def cartman_command(self, interaction: discord.Interaction, user_input: str = None):
+        await interaction.response.defer()
         response = await self._get_character_response('cartman', user_input)
         char_info = self.config.CHARACTER_INFO['cartman']
-        await ctx.send(f"{char_info['name']}: {response}")
+        await interaction.followup.send(f"{char_info['name']}: {response}")
     
     # RED GREEN SHOW
-    @commands.command(name='redgreen', aliases=['red', 'green', 'redgreenshow'])
-    async def red_green_command(self, ctx, *, problem=None):
-        """Get Red Green's handy advice - now with AI!"""
+    @app_commands.command(name='redgreen', description="Get Red Green's handy advice")
+    async def red_green_command(self, interaction: discord.Interaction, problem: str = None):
+        await interaction.response.defer()
         response = await self._get_character_response('redgreen', problem)
         char_info = self.config.CHARACTER_INFO['redgreen']
-        await ctx.send(f"{char_info['name']}: {response}")
+        await interaction.followup.send(f"{char_info['name']}: {response}")
     
     # STAR TREK
-    @commands.command(name='trek', aliases=['startrek', 'spock', 'kirk'])
-    async def trek_command(self, ctx, *, problem=None):
-        """Get a Star Trek technical solution - now with AI!"""
+    @app_commands.command(name='trek', description="Get a Star Trek technical solution")
+    async def trek_command(self, interaction: discord.Interaction, problem: str = None):
+        await interaction.response.defer()
         response = await self._get_character_response('trek', problem)
         char_info = self.config.CHARACTER_INFO['trek']
-        await ctx.send(f"{char_info['name']}: {response}")
+        await interaction.followup.send(f"{char_info['name']}: {response}")
     
     # ALEX JONES PARODY
-    @commands.command(name='conspiracy', aliases=['alexjones'])
-    async def conspiracy_command(self, ctx, *, topic=None):
-        """Generate a ridiculous conspiracy theory"""
+    @app_commands.command(name='conspiracy', description="Generate a ridiculous conspiracy theory")
+    async def conspiracy_command(self, interaction: discord.Interaction, topic: str = None):
+        await interaction.response.defer()
         if topic and self.ai_handler.is_available():
             ai_response = await self.ai_handler.get_character_response('alexjones', topic)
             if ai_response:
                 char_info = self.config.CHARACTER_INFO['alexjones']
-                await ctx.send(f"{char_info['name']}: {ai_response}")
+                await interaction.followup.send(f"{char_info['name']}: {ai_response}")
                 return
         
         # Fallback to static generator
@@ -94,68 +94,66 @@ class CharacterCommands(commands.Cog):
         reasons = ["to make us docile", "to create a one-world government", "to lower our testosterone", "to harvest our life-force", "to turn the frogs gay"]
         
         theory = f"Folks, listen to me! {random.choice(subjects)} {random.choice(actions)} {random.choice(objects)} {random.choice(reasons)}! It's a war for your mind!"
-        await ctx.send(f"🚨 **INFOWARS ALERT:** {theory}")
+        await interaction.followup.send(f"🚨 **INFOWARS ALERT:** {theory}")
     
     # NEW CHARACTERS
-    @commands.command(name='snake', aliases=['solidsnake', 'metalgear'])
-    async def snake_command(self, ctx, *, user_input=None):
-        """Solid Snake tactical wisdom"""
+    @app_commands.command(name='snake', description="Solid Snake tactical wisdom")
+    async def snake_command(self, interaction: discord.Interaction, user_input: str = None):
+        await interaction.response.defer()
         response = await self._get_character_response('snake', user_input)
         char_info = self.config.CHARACTER_INFO['snake']
-        await ctx.send(f"{char_info['name']}: {response}")
+        await interaction.followup.send(f"{char_info['name']}: {response}")
     
-    @commands.command(name='kratos', aliases=['godofwar', 'boy'])
-    async def kratos_command(self, ctx, *, user_input=None):
-        """Kratos godly wisdom and rage"""
+    @app_commands.command(name='kratos', description="Kratos godly wisdom and rage")
+    async def kratos_command(self, interaction: discord.Interaction, user_input: str = None):
+        await interaction.response.defer()
         response = await self._get_character_response('kratos', user_input)
         char_info = self.config.CHARACTER_INFO['kratos']
-        await ctx.send(f"{char_info['name']}: {response}")
+        await interaction.followup.send(f"{char_info['name']}: {response}")
     
-    @commands.command(name='dante', aliases=['dantesinferno', 'inferno'])
-    async def dante_command(self, ctx, *, user_input=None):
-        """Dante's wisdom from the depths of hell"""
+    @app_commands.command(name='dante', description="Dante's wisdom from the depths of hell")
+    async def dante_command(self, interaction: discord.Interaction, user_input: str = None):
+        await interaction.response.defer()
         response = await self._get_character_response('dante', user_input)
         char_info = self.config.CHARACTER_INFO['dante']
-        await ctx.send(f"{char_info['name']}: {response}")
+        await interaction.followup.send(f"{char_info['name']}: {response}")
     
-    # TERMINATOR (Special case - not in the main character system)
-    @commands.command(name='terminate')
-    async def threat_assessment(self, ctx, *, target=None):
-        """Terminator threat assessment"""
+    # TERMINATOR
+    @app_commands.command(name='terminate', description="Terminator threat assessment")
+    async def threat_assessment(self, interaction: discord.Interaction, target: str = None):
         if target:
             threat_levels = ["LOW", "MODERATE", "HIGH", "EXTREME", "DOES NOT COMPUTE"]
             recommendations = ['TERMINATE', 'MONITOR', 'IGNORE', 'OFFER BEER', 'RECRUIT FOR RESISTANCE']
             threat_level = random.choice(threat_levels)
             recommendation = random.choice(recommendations)
             
-            await ctx.send(f"🤖 **THREAT ASSESSMENT:** {target.upper()}\n**THREAT LEVEL:** {threat_level}\n**RECOMMENDATION:** {recommendation}")
+            await interaction.response.send_message(f"🤖 **THREAT ASSESSMENT:** {target.upper()}\n**THREAT LEVEL:** {threat_level}\n**RECOMMENDATION:** {recommendation}")
         else:
-            await ctx.send("🤖 **T-800:** I need your clothes, your boots, and your motorcycle.")
+            await interaction.response.send_message("🤖 **T-800:** I need your clothes, your boots, and your motorcycle.")
     
     # GENERAL AI CHAT
-    @commands.command(name='ai', aliases=['chat', 'ask'])
-    async def ai_chat(self, ctx, *, question):
-        """Ask the AI anything with conversation memory"""
+    @app_commands.command(name='ai', description="Ask the AI anything with conversation memory")
+    async def ai_chat(self, interaction: discord.Interaction, question: str):
         if not self.ai_handler.is_available():
-            await ctx.send("🤖 AI is not configured. Add your GEMINI_API_KEY to .env file!")
+            await interaction.response.send_message("🤖 AI is not configured. Add your GEMINI_API_KEY to .env file!", ephemeral=True)
             return
         
+        await interaction.response.defer()
         try:
-            response = await self.ai_handler.get_chat_response(ctx.author.id, question)
+            response = await self.ai_handler.get_chat_response(interaction.user.id, question)
             if response:
-                await ctx.send(f"🤖 **AI:** {response}")
+                await interaction.followup.send(f"🤖 **AI:** {response}")
             else:
-                await ctx.send("🤖 Sorry, I'm having trouble processing that right now. Try again later!")
+                await interaction.followup.send("🤖 Sorry, I'm having trouble processing that right now. Try again later!")
                 
         except Exception as e:
             logger.error(f"AI chat error: {e}")
-            await ctx.send("🤖 Something went wrong! Try again later.")
+            await interaction.followup.send("🤖 Something went wrong! Try again later.")
     
-    @commands.command(name='clearhistory', aliases=['clearchat'])
-    async def clear_history(self, ctx):
-        """Clear your AI conversation history"""
-        self.ai_handler.clear_user_history(ctx.author.id)
-        await ctx.send("🤖 Your conversation history has been cleared!")
+    @app_commands.command(name='clearhistory', description="Clear your AI conversation history")
+    async def clear_history(self, interaction: discord.Interaction):
+        self.ai_handler.clear_user_history(interaction.user.id)
+        await interaction.response.send_message("🤖 Your conversation history has been cleared!", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(CharacterCommands(bot))
