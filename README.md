@@ -1,4 +1,4 @@
-# Doodlab Assistant Bot 🤖🔥
+# Doods's Edgy Assistant Bot 🤖🔥
 
 [![Deploy to Doodlab](https://github.com/Dood345/Doods-Discord-Bot/actions/workflows/deploy.yml/badge.svg?branch=main)](https://github.com/Dood345/Doods-Discord-Bot/actions/workflows/deploy.yml)
 [![Build Verification](https://github.com/Dood345/Doods-Discord-Bot/actions/workflows/build.yml/badge.svg)](https://github.com/Dood345/Doods-Discord-Bot/actions/workflows/build.yml)
