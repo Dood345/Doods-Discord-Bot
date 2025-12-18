@@ -8,6 +8,9 @@ from dotenv import load_dotenv
 from flask import Flask
 from threading import Thread
 
+# Load environment variables FIRST before importing config
+load_dotenv()
+
 # Import our custom modules
 from config import BotConfig
 from utils.ai_handler import AIHandler
@@ -18,10 +21,6 @@ from commands.game_commands import GameCommands
 from commands.misc_commands import MiscCommands
 from commands.gift_commands import GiftCommands
 from commands.homelab_commands import HomeLabCommands
-
-
-# Load environment variables
-load_dotenv()
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
