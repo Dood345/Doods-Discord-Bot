@@ -258,7 +258,8 @@ class MiscCommands(commands.Cog):
                   "`/qr` - Generate QR code\n"
                   "`/isup` - Check website status\n"
                   "`/doodlab` - Internal status\n"
-                  "`/request` - Movie/TV requests", 
+                  "`/request` - Movie/TV requests\n"
+                  "`/printer` - Check 3D printer status", 
             inline=False
         )
         
