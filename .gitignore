@@ -5,3 +5,5 @@ __pycache__/
 *.pyd
 .Python
 *.log
+venv
+doodlab.db
