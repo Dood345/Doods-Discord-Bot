@@ -1,13 +1,16 @@
 import sqlite3
 import logging
+import os
 from datetime import datetime
 from typing import List, Tuple, Optional
 
 logger = logging.getLogger(__name__)
 
 class DatabaseHandler:
-    def __init__(self, db_path: str = 'doodlab.db'):
+    def __init__(self, db_path: str = 'data/doodlab.db'):
         self.db_path = db_path
+        # Ensure the data directory exists
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
     
     def get_connection(self):
         """Get a database connection"""
