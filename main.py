@@ -16,6 +16,8 @@ from commands.character_commands import CharacterCommands
 from commands.social_commands import SocialCommands
 from commands.game_commands import GameCommands
 from commands.misc_commands import MiscCommands
+from commands.gift_commands import GiftCommands
+from commands.homelab_commands import HomeLabCommands
 
 
 # Load environment variables
@@ -70,6 +72,8 @@ class DoodsBot(commands.Bot):
         await self.add_cog(SocialCommands(self))
         await self.add_cog(GameCommands(self))
         await self.add_cog(MiscCommands(self))
+        await self.add_cog(GiftCommands(self))
+        await self.add_cog(HomeLabCommands(self))
         
         logger.info("All cogs loaded successfully")
     
@@ -82,6 +86,15 @@ class DoodsBot(commands.Bot):
         await self.change_presence(
             activity=discord.Game(name="with propane accessories")
         )
+        
+        # Sync Slash Commands
+        try:
+            guild = discord.Object(id=self.config.SERVER_ID)
+            self.tree.copy_global_to(guild=guild)
+            await self.tree.sync(guild=guild)
+            logger.info(f"Slash commands synced to guild {self.config.SERVER_ID}")
+        except Exception as e:
+            logger.error(f"Failed to sync slash commands: {e}")
     
     async def on_message(self, message):
         """Handle all messages"""

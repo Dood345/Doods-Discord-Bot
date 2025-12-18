@@ -216,3 +216,18 @@ class BotConfig:
     
     # Reaction chance (percentage)
     REACTION_CHANCE = 25  # 25% chance to react to keywords
+
+    # Doodlab Configuration
+    PRINTER_HOST = "127.0.0.1:10088"  # Your Qidi Printer (Fluidd/Moonraker)
+    SERVER_ID = 100000000000000001 # REPLACE with your Discord Server ID (Right-click server icon -> Copy ID)
+
+    # Internal Services to Ping for /doodlab
+    # Add your specific local IPs here!
+    HOMELAB_SERVICES = [
+        {"name": "Qidi Printer", "ip": "127.0.0.1"}, # IP only for pinging
+        {"name": "Router", "ip": "127.0.0.1"},
+        {"name": "Pi-hole", "ip": "127.0.0.1"},
+        {"name": "Doodlab", "ip": "127.0.0.1"},
+        {"name": "Plex", "ip": "127.0.0.1"}
+    ]
+
