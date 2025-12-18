@@ -222,11 +222,19 @@ class BotConfig:
     # Printer Host (IP:Port for Moonraker/Fluidd)
     # Printer Host (IP:Port for Moonraker/Fluidd)
     PRINTER_HOST = os.getenv('PRINTER_HOST')
+    # Default webcam snapshot URL (Standard Moonraker/MJPEG-Streamer)
+    PRINTER_WEBCAM_URL = f"http://{PRINTER_HOST}/webcam/?action=snapshot" if PRINTER_HOST else None
     
     # Server IDs (Comma separated in .env)
     # SERVER_ID=123,456
     _server_ids_str = os.getenv('SERVER_ID', '')
     SERVER_IDS = [int(id.strip()) for id in _server_ids_str.split(',') if id.strip().isdigit()]
+
+    # Authorization
+    # Restricted commands (homelab/printer) only for these users
+    OWNER_ID = int(os.getenv('OWNER_ID', 0))
+    _allowed_users_str = os.getenv('ALLOWED_USERS', 'dood345') # Defaults to dood345
+    ALLOWED_USERS = [u.strip().lower() for u in _allowed_users_str.split(',')]
 
     # Internal Services to Ping for /doodlab
     # These now pull from .env
