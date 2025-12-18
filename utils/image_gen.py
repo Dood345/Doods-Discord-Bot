@@ -55,23 +55,23 @@ def generate_image(user_prompt):
     
     # 1. Load the template
     try:
-        with open("utils/zImageGGUF.json", "r", encoding="utf-8") as f:
+        with open("utils/image_z_image_turbo.json", "r", encoding="utf-8") as f:
             workflow = json.load(f)
     except FileNotFoundError:
-        logger.error("Workflow file 'utils/zImageGGUF.json' not found!")
+        logger.error("Workflow file 'utils/image_z_image_turbo.json' not found!")
         return None
 
     # 2. Inject the prompt
-    # Node 8 is CLIP Text Encode (Positive Prompt)
-    if "8" in workflow and "inputs" in workflow["8"]:
-        workflow["8"]["inputs"]["text"] = user_prompt
+    # Node 45 is CLIP Text Encode (Positive Prompt)
+    if "45" in workflow and "inputs" in workflow["45"]:
+        workflow["45"]["inputs"]["text"] = user_prompt
     else:
-        logger.error("Node 8 (Positive Prompt) not found in workflow!")
+        logger.error("Node 45 (Positive Prompt) not found in workflow!")
         return None
     
-    # Node 10 is KSampler - randomize seed
-    if "10" in workflow and "inputs" in workflow["10"]:
-        workflow["10"]["inputs"]["seed"] = random.randint(1, 100000000000000)
+    # Node 44 is KSampler - randomize seed
+    if "44" in workflow and "inputs" in workflow["44"]:
+        workflow["44"]["inputs"]["seed"] = random.randint(1, 100000000000000)
 
     # 3. Connect to WebSocket to listen for completion
     ws = websocket.WebSocket()
