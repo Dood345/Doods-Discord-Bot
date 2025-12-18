@@ -220,33 +220,33 @@ class BotConfig:
 
     # Doodlab Configuration
     # Printer Host (IP:Port for Moonraker/Fluidd)
-    PRINTER_HOST = os.getenv('PRINTER_HOST', '127.0.0.1:10088')
+    PRINTER_HOST = os.getenv('PRINTER_HOST')
     SERVER_ID = 100000000000000001 
 
     # Internal Services to Ping for /doodlab
-    # These now pull from .env, but have defaults for reference
+    # These now pull from .env
     HOMELAB_SERVICES = [
-        {"name": "Qidi Printer", "ip": os.getenv('PRINTER_IP', '127.0.0.1')},
-        {"name": "Router", "ip": os.getenv('ROUTER_IP', '127.0.0.1')},
-        {"name": "Pi-hole", "ip": os.getenv('PIHOLE_IP', '127.0.0.1')},
-        {"name": "Doodlab", "ip": os.getenv('DOODLAB_IP', '127.0.0.1')},
-        {"name": "Plex", "ip": os.getenv('PLEX_IP', '127.0.0.1')}
+        {"name": "Qidi Printer", "ip": os.getenv('PRINTER_IP')},
+        {"name": "Router", "ip": os.getenv('ROUTER_IP')},
+        {"name": "Pi-hole", "ip": os.getenv('PIHOLE_IP')},
+        {"name": "Doodlab", "ip": os.getenv('DOODLAB_IP')},
+        {"name": "Plex", "ip": os.getenv('PLEX_IP')}
     ]
 
     # --- HOMELAB API CONFIGURATION ---
     # Overseerr (The Request Manager)
-    OVERSEERR_URL = os.getenv('OVERSEERR_URL', 'http://127.0.0.1:5055')
+    OVERSEERR_URL = os.getenv('OVERSEERR_URL')
     OVERSEERR_API_KEY = os.getenv('OVERSEERR_API_KEY')
 
     # Sonarr (TV Shows)
-    SONARR_URL = os.getenv('SONARR_URL', 'http://127.0.0.1:8989')
+    SONARR_URL = os.getenv('SONARR_URL')
     SONARR_API_KEY = os.getenv('SONARR_API_KEY')
 
     # Radarr (Movies)
-    RADARR_URL = os.getenv('RADARR_URL', 'http://127.0.0.1:7878')
+    RADARR_URL = os.getenv('RADARR_URL')
     RADARR_API_KEY = os.getenv('RADARR_API_KEY')
 
     # Lidarr (Music)
-    LIDARR_URL = os.getenv('LIDARR_URL', 'http://127.0.0.1:8686')
+    LIDARR_URL = os.getenv('LIDARR_URL')
     LIDARR_API_KEY = os.getenv('LIDARR_API_KEY')
 
