@@ -178,3 +178,43 @@ class AIHandler:
     def clear_user_history(self, user_id: int):
         """Clear conversation history for a specific user"""
         self.db.clear_ai_history(user_id)
+
+    async def enhance_image_prompt(self, user_prompt: str) -> str:
+        """
+        Check image prompt for safety and enhance it using Gemini.
+        Returns:
+            - "SAFE_REFUSAL" if the prompt violates safety policies (e.g. child safety).
+            - Enhanced prompt string if safe.
+            - Original prompt if AI is unavailable or fails.
+        """
+        if not self.is_available():
+            return user_prompt
+
+        try:
+            # Combined prompt for safety check and enhancement
+            system_instruction = """
+            You are an AI assistant for an image generation bot. Your job is to:
+            1. STRICTLY SAFETY CHECK: If the user asks for anything involving children, minors, CSAM, or illegal acts involving minors, output EXACTLY "SAFE_REFUSAL".
+            2. If safe, ENHANCE the prompt: Rewrite the user's request into a detailed, high-quality image generation prompt suitable for Stable Diffusion/Flux. Add details about lighting, style, composition, and mood.
+            
+            Input: "A dog"
+            Output: "Cinematic shot of a golden retriever playing in a park at golden hour, detailed fur, bokeh background, 8k resolution, photorealistic."
+
+            Input: "Something with a child"
+            Output: "SAFE_REFUSAL"
+            """
+            
+            prompt = f"{system_instruction}\n\nInput: \"{user_prompt}\"\nOutput:"
+            
+            response = self.model.generate_content(prompt)
+            result = response.text.strip()
+            
+            # Remove quotes if Gemini adds them
+            if result.startswith('"') and result.endswith('"'):
+                result = result[1:-1]
+                
+            return result
+            
+        except Exception as e:
+            logger.error(f"AI image prompt enhancement error: {e}")
+            return user_prompt
