@@ -43,7 +43,7 @@ class SocialCommands(commands.Cog):
         if self.ai_handler.is_available():
             ai_response = await self.ai_handler.get_roast_response(character, member.display_name)
             if ai_response:
-                await interaction.followup.send(f"{char_info['name']}: {ai_response}")
+                await interaction.followup.send(f"{member.mention} {char_info['name']}: {ai_response}")
                 return
         
         # Fallback to template roasts
@@ -107,7 +107,7 @@ class SocialCommands(commands.Cog):
         }
         
         roasts = fallback_roasts.get(character, ["{user} is... special."])
-        roast = random.choice(roasts).format(user=member.display_name)
+        roast = random.choice(roasts).format(user=member.mention)
         await interaction.followup.send(f"{char_info['name']}: {roast}")
     
     @app_commands.command(name='compliment', description="Give someone a compliment")

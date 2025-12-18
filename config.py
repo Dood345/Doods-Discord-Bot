@@ -263,3 +263,6 @@ class BotConfig:
     LIDARR_URL = os.getenv('LIDARR_URL')
     LIDARR_API_KEY = os.getenv('LIDARR_API_KEY')
 
+    # ComfyUI Configuration
+    COMFY_URL = os.getenv('COMFY_URL', 'http://192.168.1.3:8000')
+
