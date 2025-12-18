@@ -122,8 +122,26 @@ class DoodsBot(commands.Bot):
         
         # Handle reactions
         await self.reaction_handler.handle_message(message)
+
+        # Handle mentions (AI Chat)
+        if self.user.mentioned_in(message) and not message.mention_everyone:
+            # Strip the mention to get the actual message (handling nickname mentions too)
+            content = message.content.replace(f'<@{self.user.id}>', '').replace(f'<@!{self.user.id}>', '').strip()
+            
+            if not content:
+                content = "Hello!" # Default if just mentioned
+                
+            if self.ai_handler.is_available():
+                async with message.channel.typing():
+                    response = await self.ai_handler.get_chat_response(message.author.id, content)
+                    if response:
+                        await message.reply(response)
+                    else:
+                        await message.reply("🤖 *confused processing noises* (AI error)")
+            else:
+                await message.reply("🤖 AI features are currently disabled (Missing API Key).")
         
-        # Process commands
+        # Process commands (if any legacy ones remain)
         await self.process_commands(message)
     
     async def on_command_error(self, ctx, error):
