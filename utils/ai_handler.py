@@ -9,11 +9,10 @@ from config import BotConfig
 logger = logging.getLogger(__name__)
 
 class AIHandler:
-    def __init__(self):
+    def __init__(self, db_handler):
         self.config = BotConfig()
+        self.db = db_handler
         self.model = self._setup_ai()
-        self.conversation_histories: Dict[int, List[Tuple[str, str]]] = {}
-        self.max_history_length = 10  # Keep last 10 exchanges per user
     
     def _setup_ai(self):
         """Initialize Gemini AI"""
@@ -49,37 +48,40 @@ class AIHandler:
             return None
     
     async def get_chat_response(self, user_id: int, message: str) -> Optional[str]:
-        """Get AI response for general chat with conversation history"""
+        """Get AI response for general chat with persistent database memory"""
         if not self.is_available():
             return None
         
         try:
-            # Get user's conversation history
-            history = self.conversation_histories.get(user_id, [])
+            # 1. Get recent context from DB
+            history = self.db.get_ai_history(user_id, limit=20) # Get last 20 messages
             
-            # Build context from history
+            # 2. Build context string
             context = ""
             if history:
-                context = "Previous 5 messages in conversation history:\n"
-                for user_msg, bot_msg in history[-5:]:  # Last 5 exchanges for context
-                    context += f"User: {user_msg}\nBot: {bot_msg}\n"
+                context = "Previous conversation history:\n"
+                for role, content in history:
+                    context += f"{role.capitalize()}: {content}\n"
                 context += "\n"
             else:
-                context = "Previous 5 messages in conversation history: NULL\n"
+                context = "Previous conversation history: None\n"
             
-            # Create prompt
+            # 3. Create prompt
             prompt = f"""You are playing as South Park Jesus, a peace-loving, somewhat unhinged but helpful AI assistant for a private Discord server. Always pushing jesus in the first person and merch. 
             You're not worried about being politically correct and can be a bit edgy, but you're still helpful and engaging.
             
-            {context}Current user message: "{message}"
+            {context}User: "{message}"
             
-            Respond in a conversational, slightly sarcastic way while actually trying to help or engage with their question/statement:"""
+            Respond in a conversational, slightly sarcastic way. Keep it engaging.
+            IMPORTANT: Keep your response SHORT (under 280 characters). Do not ramble."""
             
+            # 4. Generate Response
             response = self.model.generate_content(prompt)
             response_text = response.text.strip()
             
-            # Update conversation history
-            self._update_conversation_history(user_id, message, response_text)
+            # 5. Save to DB (User message AND Bot response)
+            self.db.add_ai_message(user_id, "user", message)
+            self.db.add_ai_message(user_id, "model", response_text)
             
             return response_text
             
@@ -173,19 +175,6 @@ class AIHandler:
             logger.error(f"AI beer recommendation error: {e}")
             return None
     
-    def _update_conversation_history(self, user_id: int, user_message: str, bot_response: str):
-        """Update conversation history for a user"""
-        if user_id not in self.conversation_histories:
-            self.conversation_histories[user_id] = []
-        
-        # Add new exchange
-        self.conversation_histories[user_id].append((user_message, bot_response))
-        
-        # Trim history if too long
-        if len(self.conversation_histories[user_id]) > self.max_history_length:
-            self.conversation_histories[user_id] = self.conversation_histories[user_id][-self.max_history_length:]
-    
     def clear_user_history(self, user_id: int):
         """Clear conversation history for a specific user"""
-        if user_id in self.conversation_histories:
-            del self.conversation_histories[user_id]
+        self.db.clear_ai_history(user_id)
