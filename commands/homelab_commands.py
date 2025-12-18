@@ -274,44 +274,6 @@ class HomeLabCommands(commands.Cog):
             logger.error(f"Search failed: {e}")
             await interaction.followup.send(f"❌ Something went wrong: {e}")
 
-class MediaSelectView(discord.ui.View):
-    def __init__(self, options, api_key, url):
-        super().__init__(timeout=60)
-        self.api_key = api_key
-        self.url = url
-        
-        # Add the select menu
-        self.add_item(MediaSelect(options, api_key, url))
-
-class MediaSelect(discord.ui.Select):
-    def __init__(self, options, api_key, url):
-        self.api_key = api_key
-        self.url = url
-        super().__init__(placeholder="Select media to request...", min_values=1, max_values=1, options=options)
-
-    async def callback(self, interaction: discord.Interaction):
-        # Decode the selected value
-        selection = self.values[0]
-        media_id, media_type, title = selection.split('|')
-        media_id = int(media_id)
-        
-        # Defer update
-        await interaction.response.defer()
-        
-        # Create the Request Embed and Button (reusing logic from before essentially)
-        # But we need to fetch details for the embed to look nice? 
-        # Or just show the generic RequestView we had.
-        # Let's show a "Ready to Request" embed.
-        
-        embed = discord.Embed(title=f"🎬 Selected: {title}", description="Click the button below to confirm request.", color=0xf1c40f)
-        embed.add_field(name="Type", value=media_type.upper(), inline=True)
-        
-        # Create Request View
-        view = RequestView(title, media_id, media_type, self.api_key, self.url)
-        
-        # Edit the original message to show the selection and request button
-        await interaction.edit_original_response(content="", embed=embed, view=view)
-
     @app_commands.command(name="queue", description="View active downloads in valid *arr apps")
     async def view_queue(self, interaction: discord.Interaction):
         """View active downloads across *arr apps"""
@@ -386,10 +348,11 @@ class MediaSelect(discord.ui.Select):
 
         await interaction.response.defer()
         
-        url = f"{BotConfig.OVERSEERR_URL}/api/v1/request"
+        base_url = BotConfig.OVERSEERR_URL.rstrip('/')
+        url = f"{base_url}/api/v1/request"
         headers = {'X-Api-Key': BotConfig.OVERSEERR_API_KEY}
         params = {
-            'take': 10,
+            'take': 6, # User requested top 6
             'skip': 0,
             'sort': 'added'
         }
@@ -408,14 +371,61 @@ class MediaSelect(discord.ui.Select):
                         await interaction.followup.send("📭 No active requests found.")
                         return
                     
-                    embed = discord.Embed(title="📋 Recent Media Requests", color=0x9b59b6)
+                    embed = discord.Embed(title="📋 Recent Media Requests (Last 6)", color=0x9b59b6)
                     
-                    for req in results:
+                    # Helper function to fetch media details for title
+                    async def fetch_details(req):
                         media = req.get('media', {})
                         tmdb_id = media.get('tmdbId')
-                        status = media.get('status', 'Unknown')
+                        media_type = req.get('type', media.get('mediaType', 'movie'))
                         
-                        # Overseerr Status Codes: 
+                        # Check Download Status
+                        download_progress = ""
+                        downloads = media.get('downloadStatus', [])
+                        if downloads:
+                            for d in downloads:
+                                # We care about downloading state or just show progress if exists
+                                s = d.get('size', 0)
+                                sl = d.get('sizeLeft', d.get('sizeleft', 0))
+                                if s > 0:
+                                    pct = ((s - sl) / s) * 100
+                                    # specific visual for downloading
+                                    if d.get('status') == 'downloading':
+                                        download_progress = f" ⬇️ {pct:.1f}%"
+                                        break
+                                    elif sl == 0:
+                                        # Likely finished
+                                        pass
+                        
+                        # Default info
+                        info = {
+                            'title': 'Unknown Title',
+                            'year': '????',
+                            'status': req.get('status', 1), # Request Status
+                            'requester': req.get('requestedBy', {}).get('displayName', 'Unknown'),
+                            'type': media_type,
+                            'progress': download_progress
+                        }
+                        
+                        if tmdb_id:
+                             # Fetch full details to get the Title
+                             try:
+                                 detail_url = f"{base_url}/api/v1/{media_type}/{tmdb_id}"
+                                 async with session.get(detail_url, headers=headers) as d_resp:
+                                     if d_resp.status == 200:
+                                         d_data = await d_resp.json()
+                                         info['title'] = d_data.get('title', d_data.get('name', 'Unknown'))
+                                         info['year'] = d_data.get('releaseDate', d_data.get('firstAirDate', '????'))[:4]
+                             except Exception as e:
+                                 logger.debug(f"Failed to fetch details for {tmdb_id}: {e}")
+                        return info
+
+                    # Fetch all details in parallel
+                    tasks = [fetch_details(req) for req in results]
+                    details_list = await asyncio.gather(*tasks)
+                    
+                    for item in details_list:
+                        # Map Status Code
                         # 1=PENDING, 2=APPROVED, 3=DECLINED, 4=AVAILABLE, 5=PROCESSING
                         status_map = {
                             1: "⏳ Pending",
@@ -424,50 +434,63 @@ class MediaSelect(discord.ui.Select):
                             4: "💿 Available",
                             5: "⚙️ Processing"
                         }
-                        status_text = status_map.get(status, f"Status: {status}")
+                        status_text = status_map.get(item['status'], f"Status: {item['status']}")
                         
-                        # Get Title (sometimes in different spots depending on if expanded)
-                        # But typically requests->media doesn't have title, we might rely on the 'media' object having basic info
-                        # Actually 'media' object in /request response usually has 'tmdbId' but title might be in 'media' -> 'title' ??
-                        # Let's hope Overseerr returns it, otherwise we just show ID.
-                        # Wait, the CLI example output wasn't shown, but typically /request returns a valid structure.
-                        # Let's try to get it safely.
-                        match_title = "Unknown Title"
-                        # Sometimes request objects have 'media' which contains 'tmdbId'. 
-                        # It might not have the title directly if not expanded?
-                        # Let's assume standard response includes some media info. 
-                        # Actually, strictly the /request endpoint returns request objects. 
-                        # The media info might be sparse. 
-                        # Let's format nicely with what we have.
+                        # Append progress if downloading
+                        if item['progress']:
+                            status_text += item['progress']
                         
-                        requester = req.get('requestedBy', {}).get('displayName', 'Unknown User')
-                        
-                        # Attempt to get title from the media wrapper if present, otherwise just ID
-                        # (Ideally we'd fetch details, but let's keep it simple first)
-                        # Actually, looking at Overseerr API, 'media' is included.
-                        # Let's try to grab 'media' -> 'is4k' etc.
-                        # Wait, for title, we might just have to say "Media #{tmdbId}" if title isn't there.
-                        # But often 'media' has 'status'.
-                        
+                        # Format: Title (Year) - Type
+                        #         Status | Requester
                         embed.add_field(
-                            name=f"{status_text}", 
-                            value=f"**Requester:** {requester}", 
+                            name=f"{item['title']} ({item['year']})", 
+                            value=f"{status_text} | 👤 {item['requester']}", 
                             inline=False
                         )
-                        
-                    # Note: Without titles this might be ugly. 
-                    # Let's leave it simple for now and ask user to test.
-                    # Or better: The /request endpoint typically allows fetching full media data?
-                    # The example `curl` didn't show full output. 
-                    # I'll rely on it working or we assume titles are missing without extra calls.
-                    # Actually, let's look at the result object structure in typical Overseerr.
-                    # Usually: { results: [ { id: 1, status: 1, media: { ... } } ] }
                     
                     await interaction.followup.send(embed=embed)
 
         except Exception as e:
             logger.error(f"Requests fetch failed: {e}")
             await interaction.followup.send(f"❌ Something went wrong: {e}")
+
+class MediaSelectView(discord.ui.View):
+    def __init__(self, options, api_key, url):
+        super().__init__(timeout=60)
+        self.api_key = api_key
+        self.url = url
+        
+        # Add the select menu
+        self.add_item(MediaSelect(options, api_key, url))
+
+class MediaSelect(discord.ui.Select):
+    def __init__(self, options, api_key, url):
+        self.api_key = api_key
+        self.url = url
+        super().__init__(placeholder="Select media to request...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        # Decode the selected value
+        selection = self.values[0]
+        media_id, media_type, title = selection.split('|')
+        media_id = int(media_id)
+        
+        # Defer update
+        await interaction.response.defer()
+        
+        # Create the Request Embed and Button (reusing logic from before essentially)
+        # But we need to fetch details for the embed to look nice? 
+        # Or just show the generic RequestView we had.
+        # Let's show a "Ready to Request" embed.
+        
+        embed = discord.Embed(title=f"🎬 Selected: {title}", description="Click the button below to confirm request.", color=0xf1c40f)
+        embed.add_field(name="Type", value=media_type.upper(), inline=True)
+        
+        # Create Request View
+        view = RequestView(title, media_id, media_type, self.api_key, self.url)
+        
+        # Edit the original message to show the selection and request button
+        await interaction.edit_original_response(content="", embed=embed, view=view)
 
 async def setup(bot):
     await bot.add_cog(HomeLabCommands(bot))
