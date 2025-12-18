@@ -37,7 +37,7 @@ Features iconic characters from King of the Hill, South Park, and more, powered 
 ## 🚀 Quick Setup
 
 ### 1. Requirements
-- Python 3.10+
+- Python 3.13+
 - A Discord Bot Token (with Message Content Intent enabled)
 - Google Gemini API Key (Free)
 
