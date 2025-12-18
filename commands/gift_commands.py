@@ -12,7 +12,7 @@ class GiftCommands(commands.Cog):
         self.bot = bot
         # DB init is handled in main.py via bot.db.setup_tables()
 
-    @app_commands.command(name="gift_add", description="Add an item to your wishlist")
+    @app_commands.command(name="gift-add", description="Add an item to your wishlist")
     async def gift_add(self, interaction: discord.Interaction, item: str, link: str = "No Link"):
         try:
             conn = self.bot.db.get_connection()
@@ -26,7 +26,7 @@ class GiftCommands(commands.Cog):
             logger.error(f"Error adding gift: {e}")
             await interaction.response.send_message("❌ Failed to add gift. Please try again.", ephemeral=True)
 
-    @app_commands.command(name="gift_view", description="View a friend's wishlist")
+    @app_commands.command(name="gift-view", description="View a friend's wishlist")
     async def gift_view(self, interaction: discord.Interaction, user: discord.User):
         try:
             conn = self.bot.db.get_connection()
@@ -54,7 +54,7 @@ class GiftCommands(commands.Cog):
             logger.error(f"Error viewing gifts: {e}")
             await interaction.response.send_message("❌ Failed to load wishlist.", ephemeral=True)
 
-    @app_commands.command(name="gift_claim", description="Mark an item as purchased (The owner won't know it was you)")
+    @app_commands.command(name="gift-claim", description="Mark an item as purchased (The owner won't know it was you)")
     async def gift_claim(self, interaction: discord.Interaction, item_id: int):
         try:
             conn = self.bot.db.get_connection()
@@ -80,7 +80,7 @@ class GiftCommands(commands.Cog):
             logger.error(f"Error claiming gift: {e}")
             await interaction.response.send_message("❌ Failed to claim gift.", ephemeral=True)
 
-    @app_commands.command(name="gift_remove", description="Remove an item from your wishlist")
+    @app_commands.command(name="gift-remove", description="Remove an item from your wishlist")
     async def gift_remove(self, interaction: discord.Interaction, item_id: int):
         try:
             conn = self.bot.db.get_connection()
@@ -104,7 +104,7 @@ class GiftCommands(commands.Cog):
             logger.error(f"Error removing gift: {e}")
             await interaction.response.send_message("❌ Failed to remove gift.", ephemeral=True)
 
-    @app_commands.command(name="gift_unclaim", description="Unclaim an item you previously claimed")
+    @app_commands.command(name="gift-unclaim", description="Unclaim an item you previously claimed")
     async def gift_unclaim(self, interaction: discord.Interaction, item_id: int):
         try:
             conn = self.bot.db.get_connection()

@@ -38,7 +38,7 @@ def home():
 
 def run():
   # Cloud Run provides the PORT environment variable
-  port = int(os.environ.get("PORT", 8080))
+  port = int(os.environ.get("PORT", 6969))
   app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
