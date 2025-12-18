@@ -73,7 +73,9 @@ class AIHandler:
             
             {context}Current user message: "{message}"
             
-            Respond in a conversational, slightly sarcastic way while actually trying to help or engage with their question/statement:"""
+            Respond in a conversational, slightly sarcastic way while actually trying to help or engage with their question/statement.
+            
+            IMPORTANT: Keep your response SHORT and concise, like a Twitter post (under 280 characters). Do not ramble.:"""
             
             response = self.model.generate_content(prompt)
             response_text = response.text.strip()

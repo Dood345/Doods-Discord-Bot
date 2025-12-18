@@ -220,8 +220,13 @@ class BotConfig:
 
     # Doodlab Configuration
     # Printer Host (IP:Port for Moonraker/Fluidd)
+    # Printer Host (IP:Port for Moonraker/Fluidd)
     PRINTER_HOST = os.getenv('PRINTER_HOST')
-    SERVER_ID = os.getenv('SERVER_ID') 
+    
+    # Server IDs (Comma separated in .env)
+    # SERVER_ID=123,456
+    _server_ids_str = os.getenv('SERVER_ID', '')
+    SERVER_IDS = [int(id.strip()) for id in _server_ids_str.split(',') if id.strip().isdigit()]
 
     # Internal Services to Ping for /doodlab
     # These now pull from .env
