@@ -25,16 +25,36 @@ class RequestView(discord.ui.View):
         button.disabled = True
         await interaction.response.edit_message(view=self)
         
-        # Send request to Overseerr
-        # Endpoint: /api/v1/request
+        # Prepare payload, userId = 2 for discordBot user
         headers = {'X-Api-Key': self.api_key}
         payload = {
             "mediaId": self.media_id,
             "mediaType": self.media_type,
             "is4k": False,
-            "seasons": "all" if self.media_type == 'tv' else [] # Default to all seasons for simplicity
+            "userId": 2
         }
+
+        # Handling for TV Shows (Must specify seasons)
+        if self.media_type == 'tv':
+            try:
+                # We need to fetch the show details to know the season numbers!
+                # Result from /search doesn't always have full season data
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f"{self.url}/api/v1/tv/{self.media_id}", headers=headers) as detail_resp:
+                        if detail_resp.status == 200:
+                            details = await detail_resp.json()
+                            # Extract season numbers (exclude specials/season 0 if desired, but let's include all > 0)
+                            seasons_list = [s['seasonNumber'] for s in details.get('seasons', []) if s['seasonNumber'] > 0]
+                            payload['seasons'] = seasons_list
+                        else:
+                            # Fallback if fetch fails (unsafe, but better than nothing)
+                            logger.error(f"Failed to fetch TV details: {detail_resp.status}")
+                            payload['seasons'] = [1] 
+            except Exception as e:
+                logger.error(f"Error fetching TV details: {e}")
+                payload['seasons'] = [1] # Fallback
         
+        # Send Request
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(f"{self.url}/api/v1/request", headers=headers, json=payload) as resp:
@@ -45,7 +65,7 @@ class RequestView(discord.ui.View):
                     else:
                         error_text = await resp.text()
                         logger.error(f"Overseerr Request Failed: {resp.status} - {error_text}")
-                        await interaction.followup.send(f"❌ Failed to request. Check logs.", ephemeral=True)
+                        await interaction.followup.send(f"❌ Failed to request. Check logs for details ({resp.status}).", ephemeral=True)
         except Exception as e:
             logger.error(f"Request Exception: {e}")
             await interaction.followup.send("❌ Error contacting Overseerr.", ephemeral=True)
@@ -191,14 +211,28 @@ class HomeLabCommands(commands.Cog):
 
         await interaction.response.defer()
         
-        url = f"{BotConfig.OVERSEERR_URL}/api/v1/search?query={query}"
-        headers = {'X-Api-Key': BotConfig.OVERSEERR_API_KEY}
+        # Strip trailing slash just in case
+        base_url = BotConfig.OVERSEERR_URL.rstrip('/')
+        
+        # Manually encode query to ensure compliance with strict Overseerr validation
+        # The error "Parameter 'query' must be url encoded" suggests it hates raw spaces or specific chars
+        from urllib.parse import quote
+        encoded_query = quote(query)
+        
+        url = f"{base_url}/api/v1/search?query={encoded_query}&page=1&language=en"
+        headers = {
+            'X-Api-Key': BotConfig.OVERSEERR_API_KEY,
+            'Accept': 'application/json'
+        }
+        # params = {} # We are putting everything in the URL string now to be safe
         
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, headers=headers) as resp:
                     if resp.status != 200:
-                        await interaction.followup.send(f"❌ Error talking to Overseerr: {resp.status}")
+                        text = await resp.text()
+                        logger.error(f"Overseerr Search Error: {resp.status} - {text}")
+                        await interaction.followup.send(f"❌ Error talking to Overseerr ({resp.status}). Check logs.")
                         return
                     
                     data = await resp.json()
@@ -208,23 +242,34 @@ class HomeLabCommands(commands.Cog):
                         await interaction.followup.send(f"🔍 No results found for '{query}'")
                         return
                     
-                    # Take the first result
-                    first = results[0]
-                    title = first.get('title', first.get('name', 'Unknown'))
-                    overview = first.get('overview', 'No description.')[:200] + "..."
-                    poster = f"https://image.tmdb.org/t/p/w500{first.get('posterPath')}" if first.get('posterPath') else None
-                    media_type = first.get('mediaType')
-                    media_id = first.get('id')
+                    # Limit to top 5 results for the dropdown
+                    top_results = results[:5]
                     
-                    embed = discord.Embed(title=f"🎬 Found: {title}", description=overview, color=0xf1c40f)
-                    if poster:
-                        embed.set_thumbnail(url=poster)
-                    embed.add_field(name="Type", value=media_type.upper(), inline=True)
-                    embed.add_field(name="Date", value=first.get('releaseDate', first.get('firstAirDate', 'Unknown')), inline=True)
-                    
-                    # Create View with Button
-                    view = RequestView(title, media_id, media_type, BotConfig.OVERSEERR_API_KEY, BotConfig.OVERSEERR_URL)
-                    await interaction.followup.send(embed=embed, view=view)
+                    # Create Select Menu Options
+                    options = []
+                    for res in top_results:
+                        # Extract info
+                        media_type = res.get('mediaType', 'unknown')
+                        title = res.get('title', res.get('name', 'Unknown'))
+                        year = res.get('releaseDate', res.get('firstAirDate', '????'))[:4]
+                        tmdb_id = res.get('id')
+                        
+                        # Emoji based on type
+                        emoji = "🎬" if media_type == 'movie' else "📺"
+                        
+                        # Value must be a string unique identifier
+                        # We'll pack the data into the value: "id|type|title"
+                        # But title might have pipes, so just use ID and Type
+                        value = f"{tmdb_id}|{media_type}|{title[:50]}" 
+                        
+                        label = f"{title} ({year})"
+                        desc = f"{media_type.upper()} - ID: {tmdb_id}"
+                        
+                        options.append(discord.SelectOption(label=label[:100], value=value, description=desc, emoji=emoji))
+
+                    # Create View with Select Menu
+                    select_view = MediaSelectView(options, BotConfig.OVERSEERR_API_KEY, base_url)
+                    await interaction.followup.send(f"🔍 Found {len(results)} results for '**{query}**'. Select one:", view=select_view)
                     
         except Exception as e:
             logger.error(f"Search failed: {e}")
@@ -291,6 +336,162 @@ class HomeLabCommands(commands.Cog):
             embed.description = "\n\n".join(activities)
             
         await interaction.followup.send(embed=embed)
+
+    @app_commands.command(name="requests", description="View recent Overseerr requests")
+    async def view_requests(self, interaction: discord.Interaction):
+        """View recent media requests on Overseerr"""
+        if not await self.check_auth(interaction):
+            return
+            
+        if not BotConfig.OVERSEERR_API_KEY:
+            await interaction.response.send_message("❌ Overseerr API Key not configured!", ephemeral=True)
+            return
+
+        await interaction.response.defer()
+        
+        base_url = BotConfig.OVERSEERR_URL.rstrip('/')
+        url = f"{base_url}/api/v1/request"
+        headers = {'X-Api-Key': BotConfig.OVERSEERR_API_KEY}
+        params = {
+            'take': 6, # User requested top 6
+            'skip': 0,
+            'sort': 'added'
+        }
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers=headers, params=params) as resp:
+                    if resp.status != 200:
+                        await interaction.followup.send(f"❌ Error fetching requests: {resp.status}")
+                        return
+                    
+                    data = await resp.json()
+                    results = data.get('results', [])
+                    
+                    if not results:
+                        await interaction.followup.send("📭 No active requests found.")
+                        return
+                    
+                    embed = discord.Embed(title="📋 Recent Media Requests (Last 6)", color=0x9b59b6)
+                    
+                    # Helper function to fetch media details for title
+                    async def fetch_details(req):
+                        media = req.get('media', {})
+                        tmdb_id = media.get('tmdbId')
+                        media_type = req.get('type', media.get('mediaType', 'movie'))
+                        
+                        # Check Download Status
+                        download_progress = ""
+                        downloads = media.get('downloadStatus', [])
+                        if downloads:
+                            for d in downloads:
+                                # We care about downloading state or just show progress if exists
+                                s = d.get('size', 0)
+                                sl = d.get('sizeLeft', d.get('sizeleft', 0))
+                                if s > 0:
+                                    pct = ((s - sl) / s) * 100
+                                    # specific visual for downloading
+                                    if d.get('status') == 'downloading':
+                                        download_progress = f" ⬇️ {pct:.1f}%"
+                                        break
+                                    elif sl == 0:
+                                        # Likely finished
+                                        pass
+                        
+                        # Default info
+                        info = {
+                            'title': 'Unknown Title',
+                            'year': '????',
+                            'status': req.get('status', 1), # Request Status
+                            'requester': req.get('requestedBy', {}).get('displayName', 'Unknown'),
+                            'type': media_type,
+                            'progress': download_progress
+                        }
+                        
+                        if tmdb_id:
+                             # Fetch full details to get the Title
+                             try:
+                                 detail_url = f"{base_url}/api/v1/{media_type}/{tmdb_id}"
+                                 async with session.get(detail_url, headers=headers) as d_resp:
+                                     if d_resp.status == 200:
+                                         d_data = await d_resp.json()
+                                         info['title'] = d_data.get('title', d_data.get('name', 'Unknown'))
+                                         info['year'] = d_data.get('releaseDate', d_data.get('firstAirDate', '????'))[:4]
+                             except Exception as e:
+                                 logger.debug(f"Failed to fetch details for {tmdb_id}: {e}")
+                        return info
+
+                    # Fetch all details in parallel
+                    tasks = [fetch_details(req) for req in results]
+                    details_list = await asyncio.gather(*tasks)
+                    
+                    for item in details_list:
+                        # Map Status Code
+                        # 1=PENDING, 2=APPROVED, 3=DECLINED, 4=AVAILABLE, 5=PROCESSING
+                        status_map = {
+                            1: "⏳ Pending",
+                            2: "✅ Approved", 
+                            3: "❌ Declined",
+                            4: "💿 Available",
+                            5: "⚙️ Processing"
+                        }
+                        status_text = status_map.get(item['status'], f"Status: {item['status']}")
+                        
+                        # Append progress if downloading
+                        if item['progress']:
+                            status_text += item['progress']
+                        
+                        # Format: Title (Year) - Type
+                        #         Status | Requester
+                        embed.add_field(
+                            name=f"{item['title']} ({item['year']})", 
+                            value=f"{status_text} | 👤 {item['requester']}", 
+                            inline=False
+                        )
+                    
+                    await interaction.followup.send(embed=embed)
+
+        except Exception as e:
+            logger.error(f"Requests fetch failed: {e}")
+            await interaction.followup.send(f"❌ Something went wrong: {e}")
+
+class MediaSelectView(discord.ui.View):
+    def __init__(self, options, api_key, url):
+        super().__init__(timeout=60)
+        self.api_key = api_key
+        self.url = url
+        
+        # Add the select menu
+        self.add_item(MediaSelect(options, api_key, url))
+
+class MediaSelect(discord.ui.Select):
+    def __init__(self, options, api_key, url):
+        self.api_key = api_key
+        self.url = url
+        super().__init__(placeholder="Select media to request...", min_values=1, max_values=1, options=options)
+
+    async def callback(self, interaction: discord.Interaction):
+        # Decode the selected value
+        selection = self.values[0]
+        media_id, media_type, title = selection.split('|')
+        media_id = int(media_id)
+        
+        # Defer update
+        await interaction.response.defer()
+        
+        # Create the Request Embed and Button (reusing logic from before essentially)
+        # But we need to fetch details for the embed to look nice? 
+        # Or just show the generic RequestView we had.
+        # Let's show a "Ready to Request" embed.
+        
+        embed = discord.Embed(title=f"🎬 Selected: {title}", description="Click the button below to confirm request.", color=0xf1c40f)
+        embed.add_field(name="Type", value=media_type.upper(), inline=True)
+        
+        # Create Request View
+        view = RequestView(title, media_id, media_type, self.api_key, self.url)
+        
+        # Edit the original message to show the selection and request button
+        await interaction.edit_original_response(content="", embed=embed, view=view)
 
 async def setup(bot):
     await bot.add_cog(HomeLabCommands(bot))
