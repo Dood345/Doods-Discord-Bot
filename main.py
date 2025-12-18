@@ -8,18 +8,20 @@ from dotenv import load_dotenv
 from flask import Flask
 from threading import Thread
 
+# Load environment variables FIRST before importing config
+load_dotenv()
+
 # Import our custom modules
 from config import BotConfig
 from utils.ai_handler import AIHandler
 from utils.reaction_handler import ReactionHandler
+from utils.database import DatabaseHandler
 from commands.character_commands import CharacterCommands
 from commands.social_commands import SocialCommands
 from commands.game_commands import GameCommands
 from commands.misc_commands import MiscCommands
-
-
-# Load environment variables
-load_dotenv()
+from commands.gift_commands import GiftCommands
+from commands.homelab_commands import HomeLabCommands
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -57,7 +59,11 @@ class DoodsBot(commands.Bot):
         
         # Initialize components
         self.config = BotConfig()
-        self.ai_handler = AIHandler()
+        
+        # Initialize Database
+        self.db = DatabaseHandler()
+        
+        self.ai_handler = AIHandler(self.db)
         self.reaction_handler = ReactionHandler()
         
         # User conversation histories for AI
@@ -65,11 +71,16 @@ class DoodsBot(commands.Bot):
         
     async def setup_hook(self):
         """Called when the bot is starting up"""
+        # Setup Database Tables
+        self.db.setup_tables()
+        
         # Add cogs
         await self.add_cog(CharacterCommands(self))
         await self.add_cog(SocialCommands(self))
         await self.add_cog(GameCommands(self))
         await self.add_cog(MiscCommands(self))
+        await self.add_cog(GiftCommands(self))
+        await self.add_cog(HomeLabCommands(self))
         
         logger.info("All cogs loaded successfully")
     
@@ -82,6 +93,35 @@ class DoodsBot(commands.Bot):
         await self.change_presence(
             activity=discord.Game(name="with propane accessories")
         )
+        
+        # Sync Slash Commands
+        # Sync Slash Commands
+        try:
+            if self.config.SERVER_IDS:
+                # 1. Sync to specific servers (Dev/Home Mode)
+                logger.info(f"Syncing to {len(self.config.SERVER_IDS)} servers...")
+                for server_id in self.config.SERVER_IDS:
+                    try:
+                        guild = discord.Object(id=server_id)
+                        self.tree.copy_global_to(guild=guild)
+                        await self.tree.sync(guild=guild)
+                        logger.info(f"⚡ Slash commands synced INSTANTLY to guild {server_id}")
+                    except Exception as e:
+                        logger.error(f"Failed to sync to guild {server_id}: {e}")
+                
+                # 2. CLEAR Global commands to avoid duplicates
+                # This ensures commands only appear once (as Guild commands)
+                # and don't linger as "Global" commands from previous runs
+                self.tree.clear_commands(guild=None)
+                await self.tree.sync()
+                logger.info("🗑️ Cleared global commands to prevent duplicates")
+            else:
+                # 3. If no Server IDs, sync globally (Public Bot Mode)
+                await self.tree.sync()
+                logger.info(f"🌍 Global slash commands synced (may take up to 1 hour to propagate)")
+            
+        except Exception as e:
+            logger.error(f"Failed to sync slash commands: {e}")
     
     async def on_message(self, message):
         """Handle all messages"""
@@ -90,8 +130,26 @@ class DoodsBot(commands.Bot):
         
         # Handle reactions
         await self.reaction_handler.handle_message(message)
+
+        # Handle mentions (AI Chat)
+        if self.user.mentioned_in(message) and not message.mention_everyone:
+            # Strip the mention to get the actual message (handling nickname mentions too)
+            content = message.content.replace(f'<@{self.user.id}>', '').replace(f'<@!{self.user.id}>', '').strip()
+            
+            if not content:
+                content = "Hello!" # Default if just mentioned
+                
+            if self.ai_handler.is_available():
+                async with message.channel.typing():
+                    response = await self.ai_handler.get_chat_response(message.author.id, content)
+                    if response:
+                        await message.reply(response)
+                    else:
+                        await message.reply("🤖 *confused processing noises* (AI error)")
+            else:
+                await message.reply("🤖 AI features are currently disabled (Missing API Key).")
         
-        # Process commands
+        # Process commands (if any legacy ones remain)
         await self.process_commands(message)
     
     async def on_command_error(self, ctx, error):
