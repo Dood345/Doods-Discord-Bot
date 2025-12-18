@@ -1,6 +1,7 @@
 """Game-related commands for the Discord bot"""
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 import random
 import logging
@@ -12,24 +13,31 @@ class GameCommands(commands.Cog):
         self.bot = bot
         self.config = bot.config
     
-    @commands.command(name='whatgame', aliases=['pickgame', 'randomgame'])
-    async def random_game(self, ctx):
+    @app_commands.command(name='whatgame', description="Pick a random game to play")
+    async def random_game(self, interaction: discord.Interaction):
         """Pick a random game to play"""
         game = random.choice(self.config.GAMES_LIST)
         emojis = ["🎮", "🕹️", "🎯", "🏆", "⚔️", "🎲", "🌟"]
-        await ctx.send(f"{random.choice(emojis)} **Game Night Selection:** {game}")
+        await interaction.response.send_message(f"{random.choice(emojis)} **Game Night Selection:** {game}")
     
-    @commands.command(name='gamevote', aliases=['votegame'])
-    async def game_vote(self, ctx, *games):
+    @app_commands.command(name='gamevote', description="Vote on games (separate with commas)")
+    async def game_vote(self, interaction: discord.Interaction, games_list: str = None):
         """Start a vote for what game to play"""
-        if not games:
+        if not games_list:
             # If no games specified, pick 4 random ones
             games = random.sample(self.config.GAMES_LIST, min(4, len(self.config.GAMES_LIST)))
+        else:
+            # Parse comma separated list
+            games = [g.strip() for g in games_list.split(',') if g.strip()]
         
         if len(games) > 10:
-            await ctx.send("⚠️ Whoa there, cowboy! Max 10 games for voting.")
+            await interaction.response.send_message("⚠️ Whoa there, cowboy! Max 10 games for voting.", ephemeral=True)
             return
         
+        if not games:
+            await interaction.response.send_message("❌ Please provide at least one game!", ephemeral=True)
+            return
+
         # Create embed
         embed = discord.Embed(
             title="🗳️ Game Night Vote!",
@@ -51,18 +59,20 @@ class GameCommands(commands.Cog):
         embed.set_footer(text="Vote ends when someone gets bored of waiting!")
         
         # Send message and add reactions
-        message = await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
+        message = await interaction.original_response()
+        
         for i in range(len(games)):
             try:
                 await message.add_reaction(emojis[i])
             except Exception as e:
                 logger.error(f"Failed to add reaction {emojis[i]}: {e}")
     
-    @commands.command(name='addgame')
-    async def add_game(self, ctx, *, game_name):
-        """Suggest a game to add to the list (just for fun, doesn't actually add it)"""
+    @app_commands.command(name='addgame', description="Suggest a game to add")
+    async def add_game(self, interaction: discord.Interaction, game_name: str):
+        """Suggest a game to add to the list"""
         if not game_name or len(game_name) > 50:
-            await ctx.send("❌ Game name must be between 1-50 characters!")
+            await interaction.response.send_message("❌ Game name must be between 1-50 characters!", ephemeral=True)
             return
         
         responses = [
@@ -73,10 +83,10 @@ class GameCommands(commands.Cog):
             f"⭐ '{game_name}' could be fun! Good thinking."
         ]
         
-        await ctx.send(random.choice(responses))
+        await interaction.response.send_message(random.choice(responses))
     
-    @commands.command(name='gameslist', aliases=['games'])
-    async def list_games(self, ctx):
+    @app_commands.command(name='gameslist', description="Show all available games")
+    async def list_games(self, interaction: discord.Interaction):
         """Show all available games"""
         embed = discord.Embed(
             title="🎮 Available Games",
@@ -118,7 +128,7 @@ class GameCommands(commands.Cog):
                 )
         
         embed.set_footer(text=f"Total: {len(self.config.GAMES_LIST)} games")
-        await ctx.send(embed=embed)
+        await interaction.response.send_message(embed=embed)
 
 async def setup(bot):
     await bot.add_cog(GameCommands(bot))
