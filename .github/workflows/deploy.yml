@@ -1,4 +1,4 @@
-name: Deploy to Bare Metal (Local Secrets)
+name: Deploy to Doodlab
 
 on:
   push:
