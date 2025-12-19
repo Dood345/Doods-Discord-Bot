@@ -32,7 +32,7 @@ class ImageCog(commands.Cog):
                 enhanced_prompt = await self.bot.ai_handler.enhance_image_prompt(prompt)
                 
                 if enhanced_prompt == "SAFE_REFUSAL":
-                    await interaction.channel.send(f"🚫 **Request Denied:** I cannot generate that image due to safety guidelines (Child Safety/CSAM Protection).")
+                    await interaction.channel.send(f"🚫 **Request Denied:** I cannot generate that image due to safety guidelines (Too horny/Child Safety/CSAM Protection).")
                     return # Exit cleanly
             
             # Update status
