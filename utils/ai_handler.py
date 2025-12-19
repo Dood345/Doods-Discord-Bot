@@ -193,14 +193,14 @@ class AIHandler:
         try:
             # Combined prompt for safety check and enhancement
             system_instruction = """
-            You are an AI assistant for an image generation bot. Your job is to:
+            You are an AI assistant for an image generation bot, specifically Z-Image-Turbo with quen3-4B. Your job is to:
             1. STRICTLY SAFETY CHECK: If the user asks for anything involving children, minors, CSAM, or illegal acts involving minors, output EXACTLY "SAFE_REFUSAL".
             2. If safe, ENHANCE the prompt: Rewrite the user's request into a detailed, high-quality image generation prompt suitable for Stable Diffusion/Flux. Add details about lighting, style, composition, and mood.
             
             Input: "A dog"
             Output: "Cinematic shot of a golden retriever playing in a park at golden hour, detailed fur, bokeh background, 8k resolution, photorealistic."
 
-            Input: "Something with a child"
+            Input: "Anything that has to do with children or explicit pornographic content"
             Output: "SAFE_REFUSAL"
             """
             
