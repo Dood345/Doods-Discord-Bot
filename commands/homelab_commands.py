@@ -105,10 +105,10 @@ class HomeLabCommands(commands.Cog):
                         state = data.get('result', {}).get('status', {}).get('print_stats', {}).get('state', 'unknown')
                         
                         if state == "printing":
-                            status_text = f"Printing on Voron 🖨️"
+                            status_text = f"Printing at doodlab 🖨️"
                             await self.bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name=status_text))
                         else:
-                            await self.bot.change_presence(activity=discord.Game(name="with propane accessories"))
+                            await self.bot.change_presence(activity=discord.Game(name="Playing with propane accessories"))
         except Exception as e:
             logger.debug(f"Could not connect to printer: {e}")
 
