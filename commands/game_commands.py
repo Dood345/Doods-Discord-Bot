@@ -1,134 +1,179 @@
-"""Game-related commands for the Discord bot"""
+"""Game-related commands for the Discord bot - Powered by Aperture Science"""
 
 import discord
 from discord import app_commands
 from discord.ext import commands
-import random
 import logging
+from typing import List, Optional
 
 logger = logging.getLogger(__name__)
 
 class GameCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.config = bot.config
-    
-    @app_commands.command(name='whatgame', description="Pick a random game to play")
-    async def random_game(self, interaction: discord.Interaction):
-        """Pick a random game to play"""
-        game = random.choice(self.config.GAMES_LIST)
-        emojis = ["🎮", "🕹️", "🎯", "🏆", "⚔️", "🎲", "🌟"]
-        await interaction.response.send_message(f"{random.choice(emojis)} **Game Night Selection:** {game}")
-    
-    @app_commands.command(name='gamevote', description="Vote on games (separate with commas)")
-    async def game_vote(self, interaction: discord.Interaction, games_list: str = None):
-        """Start a vote for what game to play"""
-        if not games_list:
-            # If no games specified, pick 4 random ones
-            games = random.sample(self.config.GAMES_LIST, min(4, len(self.config.GAMES_LIST)))
+        self.db = bot.db
+        
+    # Group for /game commands
+    game_group = app_commands.Group(name="game", description="Manage the Aperture Science Testing Library")
+
+    async def game_title_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        """Autocomplete for game titles"""
+        titles = self.db.search_game_titles(current)
+        return [app_commands.Choice(name=title, value=title) for title in titles]
+
+    @game_group.command(name="add", description="Submit a new mandatory fun module (simulation)")
+    async def add_game(self, interaction: discord.Interaction, title: str, link: str, min_players: int, max_players: int):
+        """Add a game to the library"""
+        await interaction.response.defer()
+        
+        # Add to database
+        game_id = self.db.add_game(
+            title=title, 
+            added_by=interaction.user.id, 
+            min_players=min_players, 
+            max_players=max_players, 
+            store_link=link
+        )
+        
+        if game_id != -1:
+            await interaction.followup.send(
+                f"🎙️ **Cave Johnson here.** We've secured a new simulation: **{title}**. "
+                "Try not to break it. Actually, break it. That's what we pay you for. "
+                "We don't pay you? Right. Carry on."
+            )
         else:
-            # Parse comma separated list
-            games = [g.strip() for g in games_list.split(',') if g.strip()]
-        
-        if len(games) > 10:
-            await interaction.response.send_message("⚠️ Whoa there, cowboy! Max 10 games for voting.", ephemeral=True)
-            return
-        
-        if not games:
-            await interaction.response.send_message("❌ Please provide at least one game!", ephemeral=True)
+            await interaction.followup.send(
+                f"🎙️ **Cave Johnson here.** Administrative sabotage! "
+                f"The file for **{title}** already exists. "
+                "Someone in filing is getting fired. Out of a cannon. Into the sun."
+            )
+
+    @game_group.command(name="rate", description="Rate a simulation's testing viability")
+    @app_commands.autocomplete(title_search=game_title_autocomplete)
+    async def rate_game(self, interaction: discord.Interaction, title_search: str, score: int):
+        """Rate a game (1-10)"""
+        # Check for integer incompetence
+        if score < 1 or score > 10:
+            if score == 11:
+                await interaction.response.send_message(
+                    "🎙️ **Cave Johnson here.** I see you selected 11. "
+                    "Listen, I like the enthusiasm, but the scale ends at 10. "
+                    "It's basic math. If you can't count to 10, don't touch the equipment.",
+                    ephemeral=True
+                )
+            else:
+                await interaction.response.send_message(
+                    "🎙️ **Cave Johnson here.** The rating scale is 1 to 10. "
+                    "Not zero, not negative five, not a billion. "
+                    "Follow instructions or you'll be demoted to 'Test Subject Class C'.",
+                    ephemeral=True
+                )
             return
 
-        # Create embed
-        embed = discord.Embed(
-            title="🗳️ Game Night Vote!",
-            description="React to vote for what game to play!",
-            color=0x00ff00
-        )
+        await interaction.response.defer()
         
-        # Number emojis for voting
-        emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟"]
-        
-        # Add fields for each game
-        for i, game in enumerate(games):
-            embed.add_field(
-                name=f"{emojis[i]} {game}",
-                value="",
-                inline=False
+        # Check if game exists
+        games = self.db.search_game_titles(title_search)
+        if title_search not in games:
+             await interaction.followup.send(
+                f"🎙️ **Cave Johnson here.** Error. Simulation **{title_search}** not found. "
+                "Are you hallucinating again? I told them to fix the gas leak in the break room.",
+                ephemeral=True
             )
+             return
+
+        # Get ID (a bit inefficient but works for now without complex lookup)
+        # In a real app we'd map name->id in autocomplete or do a fetch, 
+        # but since we just have the name from autocomplete, we assume it's valid if found.
+        # We need the ID for the rating table.
+        # Let's fetch the game details to get ID.
+        library = self.db.get_game_library() 
+        game = next((g for g in library if g['title'] == title_search), None)
         
-        embed.set_footer(text="Vote ends when someone gets bored of waiting!")
+        if game:
+            self.db.rate_game(game['id'], interaction.user.id, score)
+            await interaction.followup.send(
+                f"🎙️ **Cave Johnson here.** Rating logged for **{title_search}**. "
+                f"You gave it a **{score}/10**. Your opinion has been noted and likely discarded by a computer. "
+                "Get back to work."
+            )
+        else:
+             await interaction.followup.send("🎙️ **System Error.** Simulation data corrupted. Blame the Lab Boys.")
+
+    @game_group.command(name="list", description="View the dossier of available simulations")
+    @app_commands.choices(status_filter=[
+        app_commands.Choice(name="Seen", value="seen"),
+        app_commands.Choice(name="Playing", value="playing"),
+        app_commands.Choice(name="Played", value="played")
+    ])
+    async def list_games(self, interaction: discord.Interaction, status_filter:  app_commands.Choice[str] = None):
+        """List all games"""
+        await interaction.response.defer()
         
-        # Send message and add reactions
-        await interaction.response.send_message(embed=embed)
-        message = await interaction.original_response()
+        filter_val = status_filter.value if status_filter else None
+        games = self.db.get_game_library(status_filter=filter_val)
         
-        for i in range(len(games)):
-            try:
-                await message.add_reaction(emojis[i])
-            except Exception as e:
-                logger.error(f"Failed to add reaction {emojis[i]}: {e}")
-    
-    @app_commands.command(name='addgame', description="Suggest a game to add")
-    async def add_game(self, interaction: discord.Interaction, game_name: str):
-        """Suggest a game to add to the list"""
-        if not game_name or len(game_name) > 50:
-            await interaction.response.send_message("❌ Game name must be between 1-50 characters!", ephemeral=True)
+        if not games:
+            await interaction.followup.send("🎙️ **Cave Johnson here.** The filing cabinets are empty. "
+                                            "Either we solved all of science, or someone stole the files. "
+                                            "Start adding simulations!")
             return
-        
-        responses = [
-            f"🎮 '{game_name}' has been noted for potential addition to the games list!",
-            f"🤔 '{game_name}'? Interesting choice! I'll consider it.",
-            f"📝 Added '{game_name}' to the 'maybe someday' pile.",
-            f"🎯 '{game_name}' - now that's what I call a suggestion!",
-            f"⭐ '{game_name}' could be fun! Good thinking."
-        ]
-        
-        await interaction.response.send_message(random.choice(responses))
-    
-    @app_commands.command(name='gameslist', description="Show all available games")
-    async def list_games(self, interaction: discord.Interaction):
-        """Show all available games"""
+            
         embed = discord.Embed(
-            title="🎮 Available Games",
-            description="Here are all the games I can randomly select:",
-            color=0x0099ff
+            title="🔬 Aperture Science Mandatory Fun Modules",
+            description=f"Status: **{filter_val.upper() if filter_val else 'ALL'}**\nTotal Simulations: {len(games)}",
+            color=0xFFA500 # Aperture Orange
         )
         
-        # Split games into chunks for better display
-        games_text = ", ".join(self.config.GAMES_LIST)
-        
-        # Discord embed field limit is 1024 characters
-        if len(games_text) <= 1024:
-            embed.add_field(name="Games", value=games_text, inline=False)
+        # Group by status if no filter
+        if not filter_val:
+            for status in ["playing", "seen", "played"]:
+                status_games = [g for g in games if g['status'] == status]
+                if status_games:
+                    field_value = ""
+                    for game in status_games:
+                         rating = f"{game['avg_rating']:.1f}" if game['avg_rating'] else "N/A"
+                         field_value += f"• **{game['title']}** - {rating}/10 Science Points\n"
+                    
+                    if len(field_value) > 1024: field_value = field_value[:1020] + "..."
+                    embed.add_field(name=f"📂 {status.title()}", value=field_value, inline=False)
         else:
-            # Split into multiple fields if too long
-            words = self.config.GAMES_LIST
-            current_field = ""
-            field_count = 1
+            # Simple list if filtered
+            field_value = ""
+            for game in games:
+                rating = f"{game['avg_rating']:.1f}" if game['avg_rating'] else "N/A"
+                field_value += f"• **{game['title']}** - {rating}/10 Science Points\n"
             
-            for game in words:
-                if len(current_field + game + ", ") <= 1024:
-                    current_field += game + ", "
-                else:
-                    # Remove trailing comma and space
-                    embed.add_field(
-                        name=f"Games (Part {field_count})",
-                        value=current_field.rstrip(", "),
-                        inline=False
-                    )
-                    current_field = game + ", "
-                    field_count += 1
-            
-            # Add the last field
-            if current_field:
-                embed.add_field(
-                    name=f"Games (Part {field_count})",
-                    value=current_field.rstrip(", "),
-                    inline=False
-                )
+            if len(field_value) > 4000: field_value = field_value[:4000] + "..." # Description limit
+            embed.description += "\n\n" + field_value
+
+        embed.set_footer(text="Testing must continue indefinitely.")
+        await interaction.followup.send(embed=embed)
+
+    @game_group.command(name="update", description="Modify the status of a testing protocol")
+    @app_commands.autocomplete(title_search=game_title_autocomplete)
+    @app_commands.choices(status=[
+        app_commands.Choice(name="Seen", value="seen"),
+        app_commands.Choice(name="Playing", value="playing"),
+        app_commands.Choice(name="Played", value="played")
+    ])
+    async def update_game(self, interaction: discord.Interaction, title_search: str, status: app_commands.Choice[str]):
+        """Update game status"""
+        await interaction.response.defer()
         
-        embed.set_footer(text=f"Total: {len(self.config.GAMES_LIST)} games")
-        await interaction.response.send_message(embed=embed)
+        success = self.db.update_game_status(title_search, status.value)
+        
+        if success:
+             await interaction.followup.send(
+                f"🎙️ **Cave Johnson here.** Moving protocol **{title_search}** to phase: **{status.value}**. "
+                "If you die in the game, you die in real life. Just kidding. "
+                "Or am I? Legal says I have to say 'just kidding'."
+            )
+        else:
+             await interaction.followup.send(
+                f"🎙️ **Cave Johnson here.** Failed to update **{title_search}**. "
+                "It's stubborn. Like a badger. Or my ex-wife. Check the spelling."
+            )
 
 async def setup(bot):
     await bot.add_cog(GameCommands(bot))
