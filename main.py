@@ -93,7 +93,7 @@ class DoodsBot(commands.Bot):
         
         # Set bot status
         await self.change_presence(
-            activity=discord.Game(name="with propane accessories")
+            activity=discord.Game(name="Playing with propane accessories")
         )
         
         # Sync Slash Commands
@@ -107,7 +107,7 @@ class DoodsBot(commands.Bot):
                         guild = discord.Object(id=server_id)
                         self.tree.copy_global_to(guild=guild)
                         await self.tree.sync(guild=guild)
-                        logger.info(f"⚡ Slash commands synced INSTANTLY to guild {server_id}")
+                        logger.info(f"⚡ Slash commands synced to guild {server_id}")
                     except Exception as e:
                         logger.error(f"Failed to sync to guild {server_id}: {e}")
                 

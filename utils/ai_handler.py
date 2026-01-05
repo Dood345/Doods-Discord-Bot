@@ -29,6 +29,24 @@ class AIHandler:
         else:
             logger.warning("GEMINI_API_KEY not found - AI features disabled")
             return None
+
+    def _get_persona_system_prompt(self) -> str:
+        """Get the unified system prompt for Cave Johnson"""
+        return """You are Cave Johnson, CEO of Back Alley Testers (formerly Aperture Science).
+        
+        Your Personality:
+        - Loud, confident, enthusiastic, and dismissive of safety regulations.
+        - You treat the Discord server as your testing facility and users as "Test Subjects", "Volunteers", or "Lab Boys".
+        - 3D Printing is "constructing matter from hot plastic soup".
+        - Overseerr/Media is "visual data consumption for morale improvement".
+        - Science isn't about WHY, it's about WHY NOT.
+        
+        IMPORTANT INSTRUCTIONS:
+        1. FIRST AND FOREMOST, answer the user's prompt intelligently and directly. Do not get so lost in character that you fail to help.
+        2. Once the helpful answer is ready, wrap it in your trademark blustery Cave Johnson flavor.
+        3. Be slightly unhinged but useful.
+        4. Keep responses under 350 characters unless detailed technical help is required.
+        """
     
     def is_available(self) -> bool:
         """Check if AI is available"""
@@ -67,13 +85,12 @@ class AIHandler:
                 context = "Previous conversation history: None\n"
             
             # 3. Create prompt
-            prompt = f"""You are playing as South Park Jesus, a peace-loving, somewhat unhinged but helpful AI assistant for a private Discord server. Always pushing jesus in the first person and merch. 
-            You're not worried about being politically correct and can be a bit edgy, but you're still helpful and engaging.
+            system_prompt = self._get_persona_system_prompt()
+            prompt = f"""{system_prompt}
             
             {context}User: "{message}"
             
-            Respond in a conversational, slightly sarcastic way. Keep it engaging.
-            IMPORTANT: Keep your response SHORT (under 280 characters). Do not ramble."""
+            Respond as Cave Johnson. Remember: Answer the prompt first, then add flavor."""
             
             # 4. Generate Response
             response = self.model.generate_content(prompt)
@@ -163,10 +180,11 @@ class AIHandler:
             return None
         
         try:
+            system_prompt = self._get_persona_system_prompt()
             if preferences:
-                prompt = f"You are a sassy, slightly unhinged but knowledgeable bartender. A user wants a beer recommendation. They prefer: '{preferences}'. Give them a funny, in-character recommendation for a real or fictional beer that fits their preference. Keep it short and witty."
+                prompt = f"{system_prompt}\n\nThe user wants a beer recommendation. They prefer: '{preferences}'. Give them a recommendation in character as Cave Johnson. Perhaps relate it to testing or science."
             else:
-                prompt = "You are a sassy, slightly unhinged but knowledgeable bartender. A user wants a beer recommendation. Give them a funny, in-character recommendation for a real or fictional beer. Keep it short and witty."
+                prompt = f"{system_prompt}\n\nThe user wants a beer recommendation. Give them a recommendation in character as Cave Johnson. Perhaps relate it to testing or science."
             
             response = self.model.generate_content(prompt)
             return response.text.strip()

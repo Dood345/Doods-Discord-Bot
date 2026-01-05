@@ -1,6 +1,7 @@
 """Message reaction handling for the Discord bot"""
 
 import random
+import re
 import logging
 from config import BotConfig
 
@@ -23,7 +24,8 @@ class ReactionHandler:
     async def _handle_keyword_reactions(self, message, content_lower: str):
         """Add emoji reactions based on keywords"""
         for keyword, emojis in self.config.KEYWORD_REACTIONS.items():
-            if keyword in content_lower:
+            # Use regex to match whole words only
+            if re.search(r'\b' + re.escape(keyword) + r'\b', content_lower):
                 # Random chance to react based on config
                 if random.randint(1, 100) <= self.config.REACTION_CHANCE:
                     emoji = random.choice(emojis)
@@ -46,7 +48,7 @@ class ReactionHandler:
         
         if random.randint(1, 100) <= 1:  # 1% chance
             for keyword, responses in random_responses.items():
-                if keyword in content_lower:
+                if re.search(r'\b' + re.escape(keyword) + r'\b', content_lower):
                     response = random.choice(responses)
                     try:
                         await message.channel.send(response)

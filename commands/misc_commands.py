@@ -27,7 +27,7 @@ class MiscCommands(commands.Cog):
         if self.ai_handler.is_available():
             ai_response = await self.ai_handler.get_beer_recommendation(preferences)
             if ai_response:
-                await interaction.followup.send(f"🍺 **Bartender AI:** {ai_response}")
+                await interaction.followup.send(f"🍺 {ai_response}")
                 return
         
         # Fallback beers
