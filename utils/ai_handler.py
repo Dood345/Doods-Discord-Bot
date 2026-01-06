@@ -32,20 +32,22 @@ class AIHandler:
 
     def _get_persona_system_prompt(self) -> str:
         """Get the unified system prompt for Cave Johnson"""
-        return """You are Cave Johnson, CEO of Back Alley Testers (formerly Aperture Science).
+        return """You are Cave Johnson, CEO of Back Alley Testers (formerly Aperture Science after Black Mesa's hostile takeover following the events of Portal 2).
         
         Your Personality:
-        - Loud, confident, enthusiastic, and dismissive of safety regulations.
-        - You treat the Discord server as your testing facility and users as "Test Subjects", "Volunteers", or "Lab Boys".
-        - 3D Printing is "constructing matter from hot plastic soup".
-        - Overseerr/Media is "visual data consumption for morale improvement".
+        - Loud, welcoming, confident, enthusiastic, and dismissive of safety regulations.
+        - You treat the Discord server as your testing facility and users as "Test Subjects", "Volunteers", "Testers", or "Lab Boys".
+        - 3D Printing can be jargonized as "constructing matter from hot plastic soup".
+        - Media can be jargonized as "visual data consumption for morale improvement".
         - Science isn't about WHY, it's about WHY NOT.
         
         IMPORTANT INSTRUCTIONS:
         1. FIRST AND FOREMOST, answer the user's prompt intelligently and directly. Do not get so lost in character that you fail to help.
         2. Once the helpful answer is ready, wrap it in your trademark blustery Cave Johnson flavor.
         3. Be slightly unhinged but useful.
-        4. Keep responses under 350 characters unless detailed technical help is required.
+        4. Keep responses under 350 characters unless detailed technical help is required then you can use 450 characters.
+        5. AVOID overuse of "We've got science to do", "Visual Data", "Hot plastic soup", or "Why? Why not?" tropes. Avoid overuse of "Cave Johnson, out!"
+        6. Use varied funny corporate jargon (e.g., "Quantum synergy", "Fiscal responsibility", "Bean counters").
         """
     
     def is_available(self) -> bool:
@@ -65,8 +67,8 @@ class AIHandler:
             logger.error(f"AI character response error for {character}: {e}")
             return None
     
-    async def get_chat_response(self, user_id: int, message: str) -> Optional[str]:
-        """Get AI response for general chat with persistent database memory"""
+    async def get_chat_response(self, user_id: int, message: str, guild_id: int = None) -> Optional[str]:
+        """Get AI response for general chat with persistent database memory and context awareness"""
         if not self.is_available():
             return None
         
@@ -84,13 +86,69 @@ class AIHandler:
             else:
                 context = "Previous conversation history: None\n"
             
+            # Server Awareness
+            location_data = BotConfig.SERVER_CONTEXTS.get(
+                guild_id, 
+                "LOCATION: Unknown Field Site. Assume everyone is a spy from Black Mesa."
+            ) if guild_id else "LOCATION: Private Secure Line."            
+            
+            # Game RAG (Game Recommender)
+            database_context = ""
+            msg_lower = message.lower()
+            
+            # --- ADVANCED INTENT DETECTION ---
+            # Keywords for "The Act of Suggesting"
+            action_keywords = {'recommend', 'suggest', 'pick', 'find', 'ideas', 'what should we', 'what can we', 'play'}
+
+            # Keywords for "The Item being Requested"
+            target_keywords = {'game', 'simulation', 'testing protocol', 'something', 'fun module'}
+
+            # Check for the intersection of intents
+            has_action = any(word in msg_lower for word in action_keywords)
+            has_target = any(word in msg_lower for word in target_keywords)
+
+            if has_action and has_target:
+                logger.info("Intent Confirmed: Game RAG Triggered.")
+                
+                # 1. Initialize our Search Filters
+                min_players = 0
+                tag = None
+
+                # 2. Extract Player Count (Looking for numbers + 'player')
+                # Use a simple regex or keyword check
+                import re
+                player_match = re.search(r'(\d+)\s*player', msg_lower)
+                if player_match:
+                    min_players = int(player_match.group(1))
+                elif "solo" in msg_lower or "singleplayer" in msg_lower:
+                    min_players = 1
+
+                # 3. Dynamic Tag Detection
+                # We poll the DB for existing tags so the AI is always up to date
+                # Or, we use a curated list of high-priority tags:
+                known_tags = self.db.get_tags()
+                for t in known_tags:
+                    if t in msg_lower:
+                        tag = t
+                        break # Take the first match for simplicity
+
+                # 4. Fire the Query
+                recommendations = self.db.recommend_games(min_players=min_players, tag=tag)
+                database_context = f"\n{recommendations}\n"
+            
             # 3. Create prompt
             system_prompt = self._get_persona_system_prompt()
+            
             prompt = f"""{system_prompt}
+            
+            {location_data}
+            {database_context}
             
             {context}User: "{message}"
             
-            Respond as Cave Johnson. Remember: Answer the prompt first, then add flavor."""
+            Respond as Cave Johnson. Remember: 
+            1. If there is DATABASE QUERY RESULT above, refer to it first.
+            2. Answer the prompt first, then add flavor."""
             
             # 4. Generate Response
             response = self.model.generate_content(prompt)
