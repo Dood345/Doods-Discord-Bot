@@ -22,7 +22,49 @@ class GameCommands(commands.Cog):
         titles = await asyncio.to_thread(self.db.search_game_titles, current)
         return [app_commands.Choice(name=title, value=title) for title in titles]
 
+    async def tag_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        """Autocomplete for tags"""
+        # Fetch all tags (cached or fast query)
+        tags = await asyncio.to_thread(self.db.get_tags)
+        
+        # Filter locally for now since the list is small (70 tags)
+        # In a larger system, you'd want a specific DB search method for tags
+        filtered = [t for t in tags if current.lower() in t.lower()]
+        
+        # Limit to 25 for Discord API
+        return [app_commands.Choice(name=t, value=t) for t in filtered[:25]]
+
+    async def tags_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        """Autocomplete for multiple comma-separated tags"""
+        # Fetch all tags
+        all_tags = await asyncio.to_thread(self.db.get_tags)
+        
+        # Handle comma-separated input
+        if ',' in current:
+            # usage: "Tag1, Tag2, Cur" -> prefix="Tag1, Tag2," search="Cur"
+            prefix, sep, search_term = current.rpartition(',')
+            prefix += sep + " " # Add space for readability
+            search_term = search_term.strip()
+        else:
+            prefix = ""
+            search_term = current.strip()
+
+        # Filter tags (case-insensitive)
+        filtered = [t for t in all_tags if search_term.lower() in t.lower()]
+        
+        # Limit to 25 choices
+        choices = []
+        for t in filtered[:25]:
+            display = f"{prefix}{t}"
+            # Ensure we don't exceed Discord's choice name length limit (100 chars)
+            if len(display) > 100:
+                display = display[:97] + "..."
+            choices.append(app_commands.Choice(name=display, value=display))
+            
+        return choices
+
     @game_group.command(name="add", description="Submit a new mandatory fun module (simulation)")
+    @app_commands.autocomplete(tags=tags_autocomplete)
     @app_commands.rename(
         min_players="min-players",
         max_players="max-players",
@@ -142,6 +184,7 @@ class GameCommands(commands.Cog):
              await interaction.followup.send("🎙️ **System Error.** Simulation data corrupted. Blame the Lab Boys.")
 
     @game_group.command(name="list", description="View the dossier of available simulations")
+    @app_commands.autocomplete(tag_search=tag_autocomplete)
     @app_commands.rename(
         tag_search="tag",
         players="players",
