@@ -20,7 +20,7 @@ class AIHandler:
         if api_key:
             try:
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-2.5-flash')
+                model = genai.GenerativeModel('gemini-3-flash-preview')
                 logger.info("AI model initialized successfully")
                 return model
             except Exception as e:
@@ -86,7 +86,6 @@ class AIHandler:
                 context = "Previous conversation history: None\n"
             
             # Server Awareness
-            logger.info(f"Message from Server ID: {guild_id}")
             location_data = BotConfig.SERVER_CONTEXTS.get(
                 guild_id, 
                 "LOCATION: Unknown Field Site. Assume everyone is a spy from Black Mesa."
