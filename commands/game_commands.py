@@ -4,6 +4,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import logging
+import asyncio
 from typing import List, Optional
 
 logger = logging.getLogger(__name__)
@@ -18,21 +19,107 @@ class GameCommands(commands.Cog):
 
     async def game_title_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
         """Autocomplete for game titles"""
-        titles = self.db.search_game_titles(current)
+        titles = await asyncio.to_thread(self.db.search_game_titles, current)
         return [app_commands.Choice(name=title, value=title) for title in titles]
 
+    async def tag_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        """Autocomplete for tags"""
+        # Fetch all tags (cached or fast query)
+        tags = await asyncio.to_thread(self.db.get_tags)
+        
+        # Filter locally for now since the list is small (70 tags)
+        # In a larger system, you'd want a specific DB search method for tags
+        filtered = [t for t in tags if current.lower() in t.lower()]
+        
+        # Limit to 25 for Discord API
+        return [app_commands.Choice(name=t, value=t) for t in filtered[:25]]
+
+    async def tags_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
+        """Autocomplete for multiple comma-separated tags"""
+        # Fetch all tags
+        all_tags = await asyncio.to_thread(self.db.get_tags)
+        
+        # Handle comma-separated input
+        if ',' in current:
+            # usage: "Tag1, Tag2, Cur" -> prefix="Tag1, Tag2," search="Cur"
+            prefix, sep, search_term = current.rpartition(',')
+            prefix += sep + " " # Add space for readability
+            search_term = search_term.strip()
+        else:
+            prefix = ""
+            search_term = current.strip()
+
+        # Filter tags (case-insensitive)
+        filtered = [t for t in all_tags if search_term.lower() in t.lower()]
+        
+        # Limit to 25 choices
+        choices = []
+        for t in filtered[:25]:
+            display = f"{prefix}{t}"
+            # Ensure we don't exceed Discord's choice name length limit (100 chars)
+            if len(display) > 100:
+                display = display[:97] + "..."
+            choices.append(app_commands.Choice(name=display, value=display))
+            
+        return choices
+
     @game_group.command(name="add", description="Submit a new mandatory fun module (simulation)")
-    async def add_game(self, interaction: discord.Interaction, title: str, link: str, min_players: int, max_players: int):
+    @app_commands.autocomplete(tags=tags_autocomplete)
+    @app_commands.rename(
+        min_players="min-players",
+        max_players="max-players",
+        ideal_players="ideal-players",
+        release_state="release-state",
+        external_rating="rating",
+        link="store-link"
+    )
+    @app_commands.choices(status=[
+        app_commands.Choice(name="Unknown", value="unknown"),
+        app_commands.Choice(name="Playing", value="playing"),
+        app_commands.Choice(name="Played", value="played"),
+        app_commands.Choice(name="Wishlisted", value="wishlisted"),
+        app_commands.Choice(name="Avoid", value="avoid")
+    ])
+    @app_commands.choices(release_state=[
+        app_commands.Choice(name="TBA", value="TBA"),
+        app_commands.Choice(name="Early Access", value="early access"),
+        app_commands.Choice(name="Full Release", value="full release")
+    ])
+    async def add_game(self, interaction: discord.Interaction, 
+                       title: str, 
+                       min_players: int, 
+                       max_players: int,
+                       link: str = None,
+                       ideal_players: int = None,
+                       status: app_commands.Choice[str] = None,
+                       release_state: app_commands.Choice[str] = None,
+                       external_rating: str = None,
+                       tags: str = None,
+                       notes: str = None,
+                       category: str = None,
+                       release_date: str = None):
         """Add a game to the library"""
         await interaction.response.defer()
         
+        # Parse tags
+        tag_list = [t.strip() for t in tags.split(',')] if tags else []
+
         # Add to database
-        game_id = self.db.add_game(
+        game_id = await asyncio.to_thread(
+            self.db.add_game,
             title=title, 
             added_by=interaction.user.id, 
             min_players=min_players, 
-            max_players=max_players, 
-            store_link=link
+            max_players=max_players,
+            ideal_players=ideal_players,
+            store_link=link,
+            status=status.value if status else 'unknown',
+            release_state=release_state.value if release_state else None,
+            external_rating=external_rating,
+            notes=notes,
+            category=category,
+            release_date=release_date,
+            tags=tag_list
         )
         
         if game_id != -1:
@@ -73,7 +160,7 @@ class GameCommands(commands.Cog):
         await interaction.response.defer()
         
         # Check if game exists
-        games = self.db.search_game_titles(title_search)
+        games = await asyncio.to_thread(self.db.search_game_titles, title_search)
         if title_search not in games:
              await interaction.followup.send(
                 f"🎙️ **Cave Johnson here.** Error. Simulation **{title_search}** not found. "
@@ -82,16 +169,12 @@ class GameCommands(commands.Cog):
             )
              return
 
-        # Get ID (a bit inefficient but works for now without complex lookup)
-        # In a real app we'd map name->id in autocomplete or do a fetch, 
-        # but since we just have the name from autocomplete, we assume it's valid if found.
-        # We need the ID for the rating table.
-        # Let's fetch the game details to get ID.
-        library = self.db.get_game_library() 
+        # Get ID
+        library = await asyncio.to_thread(self.db.get_game_library) 
         game = next((g for g in library if g['title'] == title_search), None)
         
         if game:
-            self.db.rate_game(game['id'], interaction.user.id, score)
+            await asyncio.to_thread(self.db.rate_game, game['id'], interaction.user.id, score)
             await interaction.followup.send(
                 f"🎙️ **Cave Johnson here.** Rating logged for **{title_search}**. "
                 f"You gave it a **{score}/10**. Your opinion has been noted and likely discarded by a computer. "
@@ -101,48 +184,88 @@ class GameCommands(commands.Cog):
              await interaction.followup.send("🎙️ **System Error.** Simulation data corrupted. Blame the Lab Boys.")
 
     @game_group.command(name="list", description="View the dossier of available simulations")
+    @app_commands.autocomplete(tag_search=tag_autocomplete)
+    @app_commands.rename(
+        tag_search="tag",
+        players="players",
+        release_state="release-state"
+    )
     @app_commands.choices(status_filter=[
-        app_commands.Choice(name="Seen", value="seen"),
+        app_commands.Choice(name="Unknown", value="unknown"),
         app_commands.Choice(name="Playing", value="playing"),
-        app_commands.Choice(name="Played", value="played")
+        app_commands.Choice(name="Played", value="played"),
+        app_commands.Choice(name="Wishlisted", value="wishlisted"),
+        app_commands.Choice(name="Avoid", value="avoid")
     ])
-    async def list_games(self, interaction: discord.Interaction, status_filter:  app_commands.Choice[str] = None):
-        """List all games"""
+    @app_commands.choices(release_state=[
+        app_commands.Choice(name="TBA", value="TBA"),
+        app_commands.Choice(name="Early Access", value="early access"),
+        app_commands.Choice(name="Full Release", value="full release")
+    ])
+    async def list_games(self, interaction: discord.Interaction, 
+                         status_filter: app_commands.Choice[str] = None,
+                         tag_search: str = None,
+                         players: int = None,
+                         release_state: app_commands.Choice[str] = None):
+        """List all games with optional filtering"""
         await interaction.response.defer()
         
-        filter_val = status_filter.value if status_filter else None
-        games = self.db.get_game_library(status_filter=filter_val)
+        status_val = status_filter.value if status_filter else None
+        state_val = release_state.value if release_state else None
+        
+        # Async DB Call
+        games = await asyncio.to_thread(
+            self.db.get_game_library,
+            status_filter=status_val,
+            tag_filter=tag_search,
+            player_count=players,
+            release_state=state_val
+        )
         
         if not games:
             await interaction.followup.send("🎙️ **Cave Johnson here.** The filing cabinets are empty. "
                                             "Either we solved all of science, or someone stole the files. "
-                                            "Start adding simulations!")
+                                            "Try loosening your search criteria.")
             return
             
+        desc = []
+        if status_val: desc.append(f"Status: **{status_val.upper()}**")
+        if state_val: desc.append(f"State: **{state_val.upper()}**")
+        if tag_search: desc.append(f"Tag: **{tag_search}**")
+        if players: desc.append(f"Player Count: **{players}**")
+        
+        description = "\n".join(desc) + f"\nTotal Simulations: {len(games)}"
+        
         embed = discord.Embed(
             title="🔬 Aperture Science Mandatory Fun Modules",
-            description=f"Status: **{filter_val.upper() if filter_val else 'ALL'}**\nTotal Simulations: {len(games)}",
+            description=description,
             color=0xFFA500 # Aperture Orange
         )
         
-        # Group by status if no filter
-        if not filter_val:
-            for status in ["playing", "seen", "played"]:
-                status_games = [g for g in games if g['status'] == status]
+        # Helper to format game line
+        def format_game(g):
+            rating = f"{g['avg_rating']:.1f}" if g['avg_rating'] else "N/A"
+            players = f"{g['min_players']}-{g['max_players']}"
+            ideal = f" (Ideal: {g['ideal_players']})" if g['ideal_players'] else ""
+            state = f"[{g['release_state']}]" if g['release_state'] else ""
+            return f"• **{g['title']}** {state}\n  ╚ Rating: {rating}/10 | Players: {players}{ideal}"
+
+        # Group by status if no status filter is applied
+        if not status_val:
+            for status in ["playing", "wishlisted", "unknown", "played", "avoid"]:
+                status_games = [g for g in games if g['status'].lower() == status]
                 if status_games:
                     field_value = ""
                     for game in status_games:
-                         rating = f"{game['avg_rating']:.1f}" if game['avg_rating'] else "N/A"
-                         field_value += f"• **{game['title']}** - {rating}/10 Science Points\n"
+                         field_value += format_game(game) + "\n"
                     
                     if len(field_value) > 1024: field_value = field_value[:1020] + "..."
                     embed.add_field(name=f"📂 {status.title()}", value=field_value, inline=False)
         else:
-            # Simple list if filtered
+            # Simple flat list if filtered by status
             field_value = ""
             for game in games:
-                rating = f"{game['avg_rating']:.1f}" if game['avg_rating'] else "N/A"
-                field_value += f"• **{game['title']}** - {rating}/10 Science Points\n"
+                field_value += format_game(game) + "\n"
             
             if len(field_value) > 4000: field_value = field_value[:4000] + "..." # Description limit
             embed.description += "\n\n" + field_value
@@ -218,7 +341,7 @@ class GameCommands(commands.Cog):
             )
              return
 
-        success = self.db.update_game(title_search, **updates)
+        success = await asyncio.to_thread(self.db.update_game, title_search, **updates)
         
         if success:
              changes = ", ".join(updates.keys())
