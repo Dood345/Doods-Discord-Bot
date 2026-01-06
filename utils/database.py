@@ -37,7 +37,7 @@ class DatabaseHandler:
                          min_players INTEGER,
                          max_players INTEGER,
                          ideal_players INTEGER,
-                         status TEXT DEFAULT 'seen',
+                         status TEXT DEFAULT 'unknown',
                          external_rating TEXT,
                          notes TEXT,
                          release_date TEXT,
@@ -170,20 +170,42 @@ class DatabaseHandler:
             logger.error(f"Failed to fetch library: {e}")
             return []
 
-    def update_game_status(self, title: str, status: str) -> bool:
-        """Update the status of a game"""
+    def update_game(self, title: str, **kwargs) -> bool:
+        """
+        Generic update method for game fields.
+        Usage: db.update_game("Factorio", status="playing", min_players=10)
+        """
         try:
+            if not kwargs:
+                return False
+                
             conn = self.get_connection()
             c = conn.cursor()
-            # Ensure status matches lowercase convention if needed, or stick to passed value
-            # User defaults are lowercase ('seen'), so assuming lowercase storage
-            c.execute("UPDATE games SET status = ? WHERE title = ?", (status.lower(), title))
+            
+            # Build the SET clause dynamically
+            set_clauses = []
+            values = []
+            
+            for key, value in kwargs.items():
+                if key == 'status':
+                    value = value.lower()
+                    
+                set_clauses.append(f"{key} = ?")
+                values.append(value)
+            
+            # Add the WHERE clause parameter
+            values.append(title)
+            
+            query = f"UPDATE games SET {', '.join(set_clauses)} WHERE title = ?"
+            
+            c.execute(query, values)
             success = c.rowcount > 0
             conn.commit()
             conn.close()
+            
             return success
         except Exception as e:
-            logger.error(f"Failed to update game status: {e}")
+            logger.error(f"Failed to update game {title}: {e}")
             return False
 
     def search_game_titles(self, query: str) -> List[str]:
