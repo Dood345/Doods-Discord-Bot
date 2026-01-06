@@ -56,13 +56,20 @@ class DatabaseHandler:
                          PRIMARY KEY (game_id, user_id),
                          FOREIGN KEY(game_id) REFERENCES games(id) ON DELETE CASCADE)''')
 
-            # --- NEW: Tagging System ---
-            # Allows the AI to tag games with multiple genres/vibes
+            # --- NEW: Tagging System (Normalized) ---
+            # 1. Tags Table: Stores unique tag names
+            c.execute('''CREATE TABLE IF NOT EXISTS tags
+                        (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                         name TEXT UNIQUE,
+                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+
+            # 2. Game_Tags Table: Links Games to Tags via IDs
             c.execute('''CREATE TABLE IF NOT EXISTS game_tags
                         (game_id INTEGER,
-                         tag TEXT,
-                         PRIMARY KEY (game_id, tag),
-                         FOREIGN KEY(game_id) REFERENCES games(id) ON DELETE CASCADE)''')
+                         tag_id INTEGER,
+                         PRIMARY KEY (game_id, tag_id),
+                         FOREIGN KEY(game_id) REFERENCES games(id) ON DELETE CASCADE,
+                         FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE)''')
             
             conn.commit()
             conn.close()
@@ -120,23 +127,45 @@ class DatabaseHandler:
             logger.error(f"Rating failed: {e}")
 
     def add_tags(self, game_id: int, tags: List[str]):
-        """Attach classifiction tags to a game."""
+        """Attach classifiction tags to a game using the new normalized schema."""
         if not tags:
             return
             
         try:
             conn = self.get_connection()
             c = conn.cursor()
+            
             for tag in tags:
-                c.execute("INSERT OR IGNORE INTO game_tags (game_id, tag) VALUES (?, ?)", (game_id, tag.lower().strip()))
+                tag_clean = tag.strip() # maintain case for display, but search might be case-insensitive? 
+                # Let's keep it simple: Store as provided, UNIQUE constraint might fail if casing differs?
+                # Best practice: Store normalized or handle "INSERT OR IGNORE" carefully.
+                # For now, we'll strip.
+                
+                # 1. Ensure tag exists in 'tags' table and get its ID
+                # We use INSERT OR IGNORE then a SELECT to handle concurrency/duplicates
+                c.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (tag_clean,))
+                
+                # If it was ignored, we still need the ID.
+                c.execute("SELECT id FROM tags WHERE name = ?", (tag_clean,))
+                result = c.fetchone()
+                
+                if result:
+                    tag_id = result[0]
+                    # 2. Link game to tag
+                    c.execute("INSERT OR IGNORE INTO game_tags (game_id, tag_id) VALUES (?, ?)", (game_id, tag_id))
+            
             conn.commit()
             conn.close()
         except Exception as e:
             logger.error(f"Tagging failed: {e}")
 
-    def get_game_library(self, status_filter: Optional[str] = None) -> List[Dict]:
+    def get_game_library(self, 
+                         status_filter: Optional[str] = None, 
+                         tag_filter: str = None, 
+                         player_count: int = None,
+                         release_state: str = None) -> List[Dict]:
         """
-        Retrieve the dossier of games.
+        Retrieve the dossier of games with optional filtering.
         Returns a list of dictionaries containing game data + average rating.
         """
         try:
@@ -147,17 +176,41 @@ class DatabaseHandler:
             query = """
                 SELECT g.*, 
                        AVG(r.rating) as avg_rating,
-                       GROUP_CONCAT(t.tag, ', ') as tags
+                       GROUP_CONCAT(t.name, ', ') as tags
                 FROM games g
                 LEFT JOIN game_ratings r ON g.id = r.game_id
-                LEFT JOIN game_tags t ON g.id = t.game_id
+                LEFT JOIN game_tags gt ON g.id = gt.game_id
+                LEFT JOIN tags t ON gt.tag_id = t.id
+                WHERE 1=1
             """
             
             params = []
+            
+            # Dynamic Filters
             if status_filter:
-                query += " WHERE g.status = ?"
-                params.append(status_filter)
+                query += " AND LOWER(g.status) = ?"
+                params.append(status_filter.lower())
                 
+            if release_state:
+                query += " AND LOWER(g.release_state) = ?"
+                params.append(release_state.lower())
+                
+            if player_count is not None:
+                # Find games that support this number of players
+                query += " AND g.min_players <= ? AND g.max_players >= ?"
+                params.append(player_count)
+                params.append(player_count)
+            
+            if tag_filter:
+                # Subquery to find games linked to a tag with similar name
+                query += """ AND g.id IN (
+                    SELECT gt.game_id 
+                    FROM game_tags gt 
+                    JOIN tags t ON gt.tag_id = t.id 
+                    WHERE t.name LIKE ?
+                )"""
+                params.append(f"%{tag_filter}%")
+            
             query += " GROUP BY g.id ORDER BY g.title ASC"
             
             c.execute(query, params)
@@ -258,7 +311,7 @@ class DatabaseHandler:
         try:
             conn = self.get_connection()
             c = conn.cursor()
-            c.execute("SELECT DISTINCT tag FROM game_tags")
+            c.execute("SELECT name FROM tags ORDER BY name ASC")
             rows = c.fetchall()
             conn.close()
             return [r[0] for r in rows]
@@ -284,7 +337,12 @@ class DatabaseHandler:
             
             if tag:
                 # Sub-query to find games with specific tags
-                query += " AND id IN (SELECT game_id FROM game_tags WHERE tag LIKE ?)"
+                query += """ AND id IN (
+                    SELECT gt.game_id 
+                    FROM game_tags gt 
+                    JOIN tags t ON gt.tag_id = t.id 
+                    WHERE t.name LIKE ?
+                )"""
                 params.append(f"%{tag}%")
             
             query += " ORDER BY RANDOM() LIMIT ?"
