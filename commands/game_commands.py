@@ -144,8 +144,7 @@ class GameCommands(commands.Cog):
     @game_group.command(name="list", description="View the dossier of available simulations")
     @app_commands.rename(
         tag_search="tag",
-        min_players="min-players",
-        max_players="max-players",
+        players="players",
         release_state="release-state"
     )
     @app_commands.choices(status_filter=[
@@ -163,8 +162,7 @@ class GameCommands(commands.Cog):
     async def list_games(self, interaction: discord.Interaction, 
                          status_filter: app_commands.Choice[str] = None,
                          tag_search: str = None,
-                         min_players: int = None,
-                         max_players: int = None,
+                         players: int = None,
                          release_state: app_commands.Choice[str] = None):
         """List all games with optional filtering"""
         await interaction.response.defer()
@@ -177,8 +175,7 @@ class GameCommands(commands.Cog):
             self.db.get_game_library,
             status_filter=status_val,
             tag_filter=tag_search,
-            min_players=min_players,
-            max_players=max_players,
+            player_count=players,
             release_state=state_val
         )
         
@@ -192,8 +189,7 @@ class GameCommands(commands.Cog):
         if status_val: desc.append(f"Status: **{status_val.upper()}**")
         if state_val: desc.append(f"State: **{state_val.upper()}**")
         if tag_search: desc.append(f"Tag: **{tag_search}**")
-        if min_players: desc.append(f"Min Players: **{min_players}**")
-        if max_players: desc.append(f"Max Players: **{max_players}**")
+        if players: desc.append(f"Player Count: **{players}**")
         
         description = "\n".join(desc) + f"\nTotal Simulations: {len(games)}"
         

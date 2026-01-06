@@ -137,8 +137,7 @@ class DatabaseHandler:
     def get_game_library(self, 
                          status_filter: Optional[str] = None, 
                          tag_filter: str = None, 
-                         min_players: int = None, 
-                         max_players: int = None,
+                         player_count: int = None,
                          release_state: str = None) -> List[Dict]:
         """
         Retrieve the dossier of games with optional filtering.
@@ -168,15 +167,13 @@ class DatabaseHandler:
                 
             if release_state:
                 query += " AND LOWER(g.release_state) = ?"
-                params.append(release_state)
+                params.append(release_state.lower())
                 
-            if min_players is not None:
-                query += " AND g.max_players >= ?"
-                params.append(min_players)
-                
-            if max_players is not None:
-                query += " AND g.min_players <= ?"
-                params.append(max_players)
+            if player_count is not None:
+                # Find games that support this number of players
+                query += " AND g.min_players <= ? AND g.max_players >= ?"
+                params.append(player_count)
+                params.append(player_count)
             
             if tag_filter:
                 # Subquery needed because of GROUP BY? Actually, HAVING matching tag logic is tricky with GROUP_CONCAT.
