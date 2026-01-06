@@ -143,7 +143,9 @@ class DoodsBot(commands.Bot):
                 
             if self.ai_handler.is_available():
                 async with message.channel.typing():
-                    response = await self.ai_handler.get_chat_response(message.author.id, content)
+                    # Get guild ID if available (for context awareness)
+                    guild_id = message.guild.id if message.guild else None
+                    response = await self.ai_handler.get_chat_response(message.author.id, content, guild_id)
                     if response:
                         await message.reply(response)
                     else:

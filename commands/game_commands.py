@@ -150,29 +150,89 @@ class GameCommands(commands.Cog):
         embed.set_footer(text="Testing must continue indefinitely.")
         await interaction.followup.send(embed=embed)
 
-    @game_group.command(name="update", description="Modify the status of a testing protocol")
+    @game_group.command(name="update", description="Modify a testing protocol (fill at least one field)")
     @app_commands.autocomplete(title_search=game_title_autocomplete)
+    # 1. THE TRANSLATOR: Maps Python variables to cleaner Discord UI names
+    @app_commands.rename(
+        title_search="search",
+        min_players="min-players",
+        max_players="max-players",
+        ideal_players="ideal-players",
+        release_state="release-state",
+        external_rating="rating",
+        release_date="release-date",
+        last_update="last-update",
+        link="store-link"
+    )
     @app_commands.choices(status=[
-        app_commands.Choice(name="Seen", value="seen"),
+        app_commands.Choice(name="Unknown", value="unknown"),
         app_commands.Choice(name="Playing", value="playing"),
-        app_commands.Choice(name="Played", value="played")
+        app_commands.Choice(name="Played", value="played"),
+        app_commands.Choice(name="Wishlisted", value="wishlisted"),
+        app_commands.Choice(name="Avoid", value="avoid")
     ])
-    async def update_game(self, interaction: discord.Interaction, title_search: str, status: app_commands.Choice[str]):
-        """Update game status"""
+    @app_commands.choices(release_state=[
+        app_commands.Choice(name="TBA", value="TBA"),
+        app_commands.Choice(name="Early Access", value="early access"),
+        app_commands.Choice(name="Full Release", value="full release")
+    ])
+    async def update_game(self, interaction: discord.Interaction, title_search: str,
+                          # Identity
+                          title: str = None,
+                          category: str = None,
+                          # Stats
+                          min_players: int = None,
+                          max_players: int = None,
+                          ideal_players: int = None,
+                          # Status & Meta
+                          status: app_commands.Choice[str] = None,
+                          release_state: app_commands.Choice[str] = None,
+                          external_rating: str = None,
+                          release_date: str = None,
+                          last_update: str = None,
+                          # Info
+                          link: str = None,
+                          notes: str = None):
+        """Update game details"""
         await interaction.response.defer()
         
-        success = self.db.update_game_status(title_search, status.value)
+        updates = {}
+        if title: updates['title'] = title
+        if category: updates['category'] = category
+        if min_players: updates['min_players'] = min_players
+        if max_players: updates['max_players'] = max_players
+        if ideal_players: updates['ideal_players'] = ideal_players
+        if status: updates['status'] = status.value
+        if release_state: updates['release_state'] = release_state.value
+        if external_rating: updates['external_rating'] = external_rating
+        if release_date: updates['release_date'] = release_date
+        if last_update: updates['last_update'] = last_update
+        if link: updates['store_link'] = link
+        if notes: updates['notes'] = notes
+        
+        if not updates:
+             await interaction.followup.send(
+                f"🎙️ **Cave Johnson here.** You called the update protocol but didn't change anything. "
+                "Are you testing ME? Stop wasting science time.",
+                ephemeral=True
+            )
+             return
+
+        success = self.db.update_game(title_search, **updates)
         
         if success:
+             changes = ", ".join(updates.keys())
+             new_title = title if title else title_search
              await interaction.followup.send(
-                f"🎙️ **Cave Johnson here.** Moving protocol **{title_search}** to phase: **{status.value}**. "
-                "If you die in the game, you die in real life. Just kidding. "
-                "Or am I? Legal says I have to say 'just kidding'."
+                f"🎙️ **Cave Johnson here.** Protocol **{new_title}** updated. "
+                f"Amended fields: **{changes}**. "
+                "The lab boys are filing the paperwork. By which I mean they're shredding the old files."
             )
         else:
              await interaction.followup.send(
                 f"🎙️ **Cave Johnson here.** Failed to update **{title_search}**. "
-                "It's stubborn. Like a badger. Or my ex-wife. Check the spelling."
+                "It's either locked, missing, or you're spelling it wrong. "
+                "Try hitting the screen harder. That usually works."
             )
 
 async def setup(bot):
