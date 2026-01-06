@@ -22,6 +22,7 @@ if os.path.exists(db_path):
         c.execute("DROP TABLE IF EXISTS game_ratings")
         print("Dropping tags...")
         c.execute("DROP TABLE IF EXISTS game_tags")
+        c.execute("DROP TABLE IF EXISTS tags")
         conn.commit()
         print("Tables dropped successfully.")
     except Exception as e:
