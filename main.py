@@ -97,7 +97,6 @@ class DoodsBot(commands.Bot):
         )
         
         # Sync Slash Commands
-        # Sync Slash Commands
         try:
             if self.config.SERVER_IDS:
                 # 1. Sync to specific servers (Dev/Home Mode)
