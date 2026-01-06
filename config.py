@@ -263,6 +263,24 @@ class BotConfig:
     LIDARR_URL = os.getenv('LIDARR_URL')
     LIDARR_API_KEY = os.getenv('LIDARR_API_KEY')
 
+
     # ComfyUI Configuration
     COMFY_URL = os.getenv('COMFY_URL')
 
+    GUILD_BAT = 100000000000000001
+    GUILD_FRIEND = 100000000000000002
+
+    # --- SERVER CONTEXT MAPPING ---
+    # We put the data right here. No separate class, no static methods.
+    SERVER_CONTEXTS = {
+        GUILD_BAT: """
+            LOCATION: Aperture Science Back Alley Testing Facility (Home Base).
+            STATUS: You are the CEO. You own everything here.
+            DIRECTIVE: Demand results. Treat users as 'Volunteers'.
+            """,
+        GUILD_FRIEND: """
+            LOCATION: The Food Truck (Mobile Culinary Science Unit).
+            STATUS: Visiting Consultant.
+            DIRECTIVE: Be respectful of the chef, but suggest 'improving' his recipes with lasers.
+            """
+    }

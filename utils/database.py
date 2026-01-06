@@ -29,6 +29,7 @@ class DatabaseHandler:
             
             # --- NEW: Games Repository ---
             # Status: 'seen', 'played', 'playing', 'wishlist'
+            # Added: external_rating
             c.execute('''CREATE TABLE IF NOT EXISTS games
                         (id INTEGER PRIMARY KEY AUTOINCREMENT,
                          title TEXT UNIQUE,
@@ -36,7 +37,8 @@ class DatabaseHandler:
                          min_players INTEGER,
                          max_players INTEGER,
                          ideal_players INTEGER,
-                         status TEXT DEFAULT 'seen',
+                         status TEXT DEFAULT 'unknown',
+                         external_rating TEXT,
                          notes TEXT,
                          release_date TEXT,
                          release_state TEXT,
@@ -70,7 +72,7 @@ class DatabaseHandler:
 
     # --- Game Methods ---
 
-    def add_game(self, title: str, added_by: int, **kwargs) -> int:
+    def add_game(self, title: str, added_by: int, tags: List[str] = None, **kwargs) -> int:
         """Add a new simulation to the roster. Returns the new Game ID."""
         try:
             conn = self.get_connection()
@@ -92,6 +94,11 @@ class DatabaseHandler:
             game_id = c.lastrowid
             conn.commit()
             conn.close()
+            
+            # Handle tags if provided
+            if tags and game_id:
+                self.add_tags(game_id, tags)
+                
             return game_id
         except sqlite3.IntegrityError:
             logger.warning(f"Game '{title}' already exists in the repository.")
@@ -114,6 +121,9 @@ class DatabaseHandler:
 
     def add_tags(self, game_id: int, tags: List[str]):
         """Attach classifiction tags to a game."""
+        if not tags:
+            return
+            
         try:
             conn = self.get_connection()
             c = conn.cursor()
@@ -160,20 +170,42 @@ class DatabaseHandler:
             logger.error(f"Failed to fetch library: {e}")
             return []
 
-    def update_game_status(self, title: str, status: str) -> bool:
-        """Update the status of a game"""
+    def update_game(self, title: str, **kwargs) -> bool:
+        """
+        Generic update method for game fields.
+        Usage: db.update_game("Factorio", status="playing", min_players=10)
+        """
         try:
+            if not kwargs:
+                return False
+                
             conn = self.get_connection()
             c = conn.cursor()
-            # Ensure status matches lowercase convention if needed, or stick to passed value
-            # User defaults are lowercase ('seen'), so assuming lowercase storage
-            c.execute("UPDATE games SET status = ? WHERE title = ?", (status.lower(), title))
+            
+            # Build the SET clause dynamically
+            set_clauses = []
+            values = []
+            
+            for key, value in kwargs.items():
+                if key == 'status':
+                    value = value.lower()
+                    
+                set_clauses.append(f"{key} = ?")
+                values.append(value)
+            
+            # Add the WHERE clause parameter
+            values.append(title)
+            
+            query = f"UPDATE games SET {', '.join(set_clauses)} WHERE title = ?"
+            
+            c.execute(query, values)
             success = c.rowcount > 0
             conn.commit()
             conn.close()
+            
             return success
         except Exception as e:
-            logger.error(f"Failed to update game status: {e}")
+            logger.error(f"Failed to update game {title}: {e}")
             return False
 
     def search_game_titles(self, query: str) -> List[str]:
@@ -221,3 +253,57 @@ class DatabaseHandler:
             conn.close()
         except Exception as e:
             logger.error(f"Failed to clear AI history: {e}")
+
+    def get_tags(self) -> List[str]:
+        try:
+            conn = self.get_connection()
+            c = conn.cursor()
+            c.execute("SELECT DISTINCT tag FROM game_tags")
+            rows = c.fetchall()
+            conn.close()
+            return [r[0] for r in rows]
+        except Exception as e:
+            logger.error(f"Failed to get tags: {e}")
+            return []
+
+    def recommend_games(self, min_players: int = 0, tag: str = None, limit: int = 5) -> str:
+        """
+        Searches the DB and returns a formatted string for the AI to read.
+        """
+        try:
+            conn = self.get_connection()
+            conn.row_factory = sqlite3.Row
+            c = conn.cursor()
+            
+            query = "SELECT title, min_players, max_players, notes FROM games WHERE 1=1"
+            params = []
+            
+            if min_players > 0:
+                query += " AND max_players >= ?"
+                params.append(min_players)
+            
+            if tag:
+                # Sub-query to find games with specific tags
+                query += " AND id IN (SELECT game_id FROM game_tags WHERE tag LIKE ?)"
+                params.append(f"%{tag}%")
+            
+            query += " ORDER BY RANDOM() LIMIT ?"
+            params.append(limit)
+            
+            c.execute(query, params)
+            rows = c.fetchall()
+            conn.close()
+            
+            if not rows:
+                return "DATABASE QUERY RESULT: No simulations found matching those criteria."
+            
+            # Format this into a string the AI can read
+            result_text = "DATABASE QUERY RESULT (Cave Johnson's Approved List):\n"
+            for row in rows:
+                result_text += f"- {row['title']} (Players: {row['min_players']}-{row['max_players']}). Note: {row['notes']}\n"
+            
+            return result_text
+            
+        except Exception as e:
+            logger.error(f"Recommendation failed: {e}")
+            return "DATABASE ERROR: The file cabinets are jammed."
