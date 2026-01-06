@@ -3,6 +3,15 @@ import os
 
 db_path = 'data/doodlab.db'
 
+
+### CAUTION: This will drop all game tables ###
+### Use with caution ###
+### This will delete all game data ###
+### This will delete all game ratings ###
+### This will delete all game tags ###
+### CAUTION: This will drop all game tables ###
+
+
 if os.path.exists(db_path):
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
