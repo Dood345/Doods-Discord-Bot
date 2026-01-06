@@ -134,9 +134,14 @@ class DatabaseHandler:
         except Exception as e:
             logger.error(f"Tagging failed: {e}")
 
-    def get_game_library(self, status_filter: Optional[str] = None) -> List[Dict]:
+    def get_game_library(self, 
+                         status_filter: Optional[str] = None, 
+                         tag_filter: str = None, 
+                         min_players: int = None, 
+                         max_players: int = None,
+                         release_state: str = None) -> List[Dict]:
         """
-        Retrieve the dossier of games.
+        Retrieve the dossier of games with optional filtering.
         Returns a list of dictionaries containing game data + average rating.
         """
         try:
@@ -151,13 +156,34 @@ class DatabaseHandler:
                 FROM games g
                 LEFT JOIN game_ratings r ON g.id = r.game_id
                 LEFT JOIN game_tags t ON g.id = t.game_id
+                WHERE 1=1
             """
             
             params = []
+            
+            # Dynamic Filters
             if status_filter:
-                query += " WHERE g.status = ?"
-                params.append(status_filter)
+                query += " AND LOWER(g.status) = ?"
+                params.append(status_filter.lower())
                 
+            if release_state:
+                query += " AND LOWER(g.release_state) = ?"
+                params.append(release_state)
+                
+            if min_players is not None:
+                query += " AND g.max_players >= ?"
+                params.append(min_players)
+                
+            if max_players is not None:
+                query += " AND g.min_players <= ?"
+                params.append(max_players)
+            
+            if tag_filter:
+                # Subquery needed because of GROUP BY? Actually, HAVING matching tag logic is tricky with GROUP_CONCAT.
+                # Simplest way in standard SQL: 
+                query += " AND g.id IN (SELECT game_id FROM game_tags WHERE tag LIKE ?)"
+                params.append(f"%{tag_filter}%")
+            
             query += " GROUP BY g.id ORDER BY g.title ASC"
             
             c.execute(query, params)
