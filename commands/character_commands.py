@@ -140,7 +140,8 @@ class CharacterCommands(commands.Cog):
         
         await interaction.response.defer()
         try:
-            response = await self.ai_handler.get_chat_response(interaction.user.id, question)
+            # Now passing the location data
+            response = await self.ai_handler.get_chat_response(interaction.user.id, question, guild_id=interaction.guild_id)
             if response:
                 await interaction.followup.send(f"🤖 **AI:** {response}")
             else:
