@@ -30,12 +30,11 @@ jobs:
 
     - name: Update Dependencies
       run: |
-        # Create venv if it doesn't exist yet
         if [ ! -d "/home/dood345/discordBot/venv" ]; then
-        python3 -m venv /home/dood345/discordBot/venv
+          python3 -m venv /home/dood345/discordBot/venv
         fi
-        # Install requirements
-        /home/dood345/discordBot/venv/bin/pip install -r requirements.txt
+        # Added --upgrade to ensure yt-dlp stays fresh against YouTube changes
+        /home/dood345/discordBot/venv/bin/pip install --upgrade -r requirements.txt
 
     - name: Restart Service
       # Reload the bot so it reads the new code and the existing .env

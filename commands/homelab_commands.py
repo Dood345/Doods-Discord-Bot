@@ -275,7 +275,7 @@ class HomeLabCommands(commands.Cog):
             logger.error(f"Search failed: {e}")
             await interaction.followup.send(f"❌ Something went wrong: {e}")
 
-    @app_commands.command(name="queue", description="View active downloads in valid *arr apps")
+    @app_commands.command(name="dl-queue", description="View active downloads in valid *arr apps")
     async def view_queue(self, interaction: discord.Interaction):
         """View active downloads across *arr apps"""
         if not await self.check_auth(interaction):
