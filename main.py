@@ -23,6 +23,7 @@ from commands.misc_commands import MiscCommands
 from commands.gift_commands import GiftCommands
 from commands.homelab_commands import HomeLabCommands
 from commands.image_cog import ImageCog
+from commands.music import MusicCommands
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -52,7 +53,7 @@ class DoodsBot(commands.Bot):
         intents.message_content = True
         
         super().__init__(
-            command_prefix='/',
+            command_prefix='!',
             intents=intents,
             case_insensitive=True,
             help_command=None  # We'll use custom help
@@ -83,46 +84,20 @@ class DoodsBot(commands.Bot):
         await self.add_cog(GiftCommands(self))
         await self.add_cog(HomeLabCommands(self))
         await self.add_cog(ImageCog(self))
+        await self.add_cog(MusicCommands(self))
         
         logger.info("All cogs loaded successfully")
     
     async def on_ready(self):
         """Called when bot connects to Discord"""
-        logger.info(f'{self.user} has landed and is ready for shenanigans!')
-        logger.info(f'Servers: {len(self.guilds)}')
+        logger.info(f'🚀 {self.user} is online! Serving {len(self.guilds)} guilds.')
         
         # Set bot status
         await self.change_presence(
-            activity=discord.Game(name="Playing with propane accessories")
+            activity=discord.Game(name="Science | /help")
         )
         
-        # Sync Slash Commands
-        try:
-            if self.config.SERVER_IDS:
-                # 1. Sync to specific servers (Dev/Home Mode)
-                logger.info(f"Syncing to {len(self.config.SERVER_IDS)} servers...")
-                for server_id in self.config.SERVER_IDS:
-                    try:
-                        guild = discord.Object(id=server_id)
-                        self.tree.copy_global_to(guild=guild)
-                        await self.tree.sync(guild=guild)
-                        logger.info(f"⚡ Slash commands synced to guild {server_id}")
-                    except Exception as e:
-                        logger.error(f"Failed to sync to guild {server_id}: {e}")
-                
-                # 2. CLEAR Global commands to avoid duplicates
-                # This ensures commands only appear once (as Guild commands)
-                # and don't linger as "Global" commands from previous runs
-                self.tree.clear_commands(guild=None)
-                await self.tree.sync()
-                logger.info("🗑️ Cleared global commands to prevent duplicates")
-            else:
-                # 3. If no Server IDs, sync globally (Public Bot Mode)
-                await self.tree.sync()
-                logger.info(f"🌍 Global slash commands synced (may take up to 1 hour to propagate)")
-            
-        except Exception as e:
-            logger.error(f"Failed to sync slash commands: {e}")
+        # NOTE: Auto-sync logic removed. Use !sync . to sync.
     
     async def on_message(self, message):
         """Handle all messages"""
@@ -175,6 +150,28 @@ if __name__ == "__main__":
     keep_alive() # Starts the web server
 
     bot = DoodsBot()
+
+    # --- THE MAGIC SYNC COMMAND ---
+    # Only the owner (you) can run this.
+    # Usage: 
+    #   !sync        -> Syncs globally (takes 1 hour to appear everywhere)
+    #   !sync .      -> Syncs to THIS server instantly (for testing)
+    @bot.command()
+    @commands.is_owner()
+    async def sync(ctx, spec: str = None):
+        if spec == ".":
+            # Instant sync to current server
+            synced = await ctx.bot.tree.sync(guild=ctx.guild)
+            await ctx.send(f"⚡ Synced {len(synced)} commands to **this server** instantly.")
+        elif spec == "clear":
+            # Nuke commands (if you made a mess)
+            ctx.bot.tree.clear_commands(guild=ctx.guild)
+            await ctx.bot.tree.sync(guild=ctx.guild)
+            await ctx.send("🗑️ Cleared local guild commands.")
+        else:
+            # Standard Global Sync
+            synced = await ctx.bot.tree.sync()
+            await ctx.send(f"🌍 Synced {len(synced)} commands **Globally**. (Updates in ~1 hour).")
     
     try:
         logger.info("Starting bot...")
