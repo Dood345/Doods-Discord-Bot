@@ -31,7 +31,7 @@ class MusicCommands(commands.Cog):
         self.bot = bot
         self.queue = []      # List of (url, title) tuples
         self.current = None  # Currently playing track info
-        self.volume = 0.5    # Default Volume (50%)
+        self.volume = 0.5    # Default volume
         
     async def cog_load(self):
         """Check for FFmpeg availability on load"""
@@ -59,7 +59,7 @@ class MusicCommands(commands.Cog):
                 return
 
             try:
-                # 1. Get the stream URL (We do this JIT - Just In Time - to prevent expiry)
+                # 1. Get Stream URL (We do this JIT - Just In Time - to prevent expiry)
                 loop = self.bot.loop or asyncio.get_event_loop()
                 data = await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(YDL_OPTIONS).extract_info(url, download=False))
                 
@@ -68,11 +68,18 @@ class MusicCommands(commands.Cog):
                     
                 stream_url = data['url']
                 
-                # 2. Play
-                # Create the raw FFmpeg source
-                ffmpeg_source = discord.FFmpegPCMAudio(stream_url, **FFMPEG_OPTIONS)
+                # 2. Update Bot Status (THE NEW PART)
+                # We strip it to fit Discord's limit and look clean
+                display_title = (title[:30] + '..') if len(title) > 30 else title
+                await self.bot.change_presence(
+                    activity=discord.Activity(
+                        type=discord.ActivityType.listening, 
+                        name=f"{display_title}"
+                    )
+                )
                 
-                # Wrap it in a Volume Transformer
+                # 3. Play with Volume Control
+                ffmpeg_source = discord.FFmpegPCMAudio(stream_url, **FFMPEG_OPTIONS)
                 source = discord.PCMVolumeTransformer(ffmpeg_source, volume=self.volume)
                 
                 def after_playing(e):
@@ -82,22 +89,32 @@ class MusicCommands(commands.Cog):
 
                 voice_client.play(source, after=after_playing)
                 
-                # Optional: Send a "Now Playing" update
-                # (Note: sending messages from a callback is tricky, usually we skip it or update a status)
-                
             except Exception as e:
                 logger.error(f"Failed to play {title}: {e}")
                 self.current = None
                 await self.play_next(interaction) # Skip to next
         else:
             self.current = None
+            # Queue is empty - Reset Status
+            await self.bot.change_presence(
+                activity=discord.Game(name="Science | /help")
+            )
             # Auto-disconnect if queue empty? Optional.
             # await interaction.guild.voice_client.disconnect()
 
     @app_commands.command(name="play", description="Play audio from YouTube (Search or Link)")
-    async def play(self, interaction: discord.Interaction, query: str):
+    @app_commands.describe(query="Search term (e.g. 'lofi hip hop')", url="Direct YouTube Link")
+    async def play(self, interaction: discord.Interaction, query: str = None, url: str = None):
         """Robust YouTube Player"""
         await interaction.response.defer()
+
+        # 0. Input Validation
+        if not query and not url:
+            await interaction.followup.send("⚠️ **Cave here.** You need to give me something to play. A search term or a URL. I'm not a mind reader.", ephemeral=True)
+            return
+
+        target = url if url else query
+        is_direct_link = True if url else False
 
         # 1. Voice Channel Check
         if not interaction.user.voice:
@@ -109,12 +126,15 @@ class MusicCommands(commands.Cog):
             vc = await interaction.user.voice.channel.connect()
 
         # 2. Search / Extraction
-        msg = await interaction.followup.send(f"🔍 **Searching:** `{query}`...")
+        if is_direct_link:
+            msg = await interaction.followup.send(f"� **Loading Link:** `{target}`...")
+        else:
+            msg = await interaction.followup.send(f"�🔍 **Searching:** `{target}`...")
         
         try:
             with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
                 # "extract_flat" is fast for playlists
-                info = ydl.extract_info(query, download=False)
+                info = ydl.extract_info(target, download=False)
 
             # 3. Handle Results (Single vs Playlist)
             added_songs = []
@@ -130,11 +150,14 @@ class MusicCommands(commands.Cog):
                     # It is a Search Result (take the first one)
                     entry = info['entries'][0]
                     added_songs.append((entry['url'], entry['title']))
-                    await msg.edit(content=f"🎵 **Found:** {entry['title']}")
+                    if is_direct_link:
+                        await msg.edit(content=f"🎵 **Added:** {entry['title']}")
+                    else:
+                        await msg.edit(content=f"🎵 **Found:** {entry['title']}")
             else:
                 # Direct Link
                 added_songs.append((info['url'], info['title']))
-                await msg.edit(content=f"🎵 **Found:** {info['title']}")
+                await msg.edit(content=f"🎵 **Added:** {info['title']}")
 
             # 4. Add to Queue
             self.queue.extend(added_songs)
@@ -180,6 +203,10 @@ class MusicCommands(commands.Cog):
             self.current = None
             vc.stop()
             await vc.disconnect()
+            
+            # Reset Status immediately
+            await self.bot.change_presence(activity=discord.Game(name="Science | /help"))
+            
             await interaction.response.send_message("🛑 **Testing Concluded.**")
         else:
             await interaction.response.send_message("I'm not connected.", ephemeral=True)
