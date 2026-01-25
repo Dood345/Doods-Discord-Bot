@@ -4,6 +4,8 @@ from discord.ext import commands
 import yt_dlp
 import asyncio
 import logging
+import os
+import edge_tts
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,9 @@ class MusicCommands(commands.Cog):
         self.queue = []      # List of (url, title) tuples
         self.current = None  # Currently playing track info
         self.volume = 0.5    # Default volume
+        self.history = []    # History of played tracks (url, title)
+        self.tts_enabled = False # Default to OFF (Safety first)
+        self.music_channel = None # We need to remember where to speak
         
     async def cog_load(self):
         """Check for FFmpeg availability on load"""
@@ -47,66 +52,123 @@ class MusicCommands(commands.Cog):
         except Exception as e:
             logger.warning(f"⚠️ Error checking FFmpeg: {e}")
 
+    async def generate_announcement(self, text):
+        """Generates a TTS mp3 file using Edge TTS (Natural Voice)"""
+        try:
+            # "en-US-ChristopherNeural" is a great 'stern male' voice
+            communicate = edge_tts.Communicate(text, "en-US-ChristopherNeural")
+            await communicate.save("tts_announcement.mp3")
+            return True
+        except Exception as e:
+            logger.error(f"TTS Generation failed: {e}")
+            return False
+
     async def play_next(self, interaction):
         """Callback to play the next song in the queue"""
         if self.queue:
+            # Save previous track to history if it finished naturally
+            if self.current:
+                self.history.append(self.current)
+                # Keep history limited to last 20 songs to save memory
+                if len(self.history) > 20: 
+                    self.history.pop(0)
+
             # Pop the next song
             url, title = self.queue.pop(0)
-            self.current = title
+            self.current = (url, title)
             
             voice_client = interaction.guild.voice_client
             if not voice_client:
                 return
 
             try:
-                # 1. Get Stream URL (We do this JIT - Just In Time - to prevent expiry)
+                # 1. Get Stream URL (JIT)
                 loop = self.bot.loop or asyncio.get_event_loop()
                 data = await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(YDL_OPTIONS).extract_info(url, download=False))
                 
-                if 'entries' in data: # Handle edge case where search returns a list
+                if 'entries' in data:
                     data = data['entries'][0]
-                    
+                
                 stream_url = data['url']
                 
-                # 2. Update Bot Status (THE NEW PART)
-                # We strip it to fit Discord's limit and look clean
+                # 2. Update Facility Status (Local Voice Channel)
+                # We strip it to fit Discord's limit
                 display_title = (title[:30] + '..') if len(title) > 30 else title
-                await self.bot.change_presence(
-                    activity=discord.Activity(
-                        type=discord.ActivityType.listening, 
-                        name=f"{display_title}"
-                    )
-                )
                 
-                # 3. Play with Volume Control
-                ffmpeg_source = discord.FFmpegPCMAudio(stream_url, **FFMPEG_OPTIONS)
-                source = discord.PCMVolumeTransformer(ffmpeg_source, volume=self.volume)
+                # NEW WAY: Local Channel Status
+                vc_channel = interaction.guild.voice_client.channel
                 
-                def after_playing(e):
-                    if e: logger.error(f"Playback error: {e}")
-                    # Recursive call to keep the queue moving
+                # Check for permissions first so we don't crash if we can't edit
+                if vc_channel.permissions_for(interaction.guild.me).manage_channels:
+                    # Discord status supports emojis, so we add a music note
+                    await vc_channel.edit(status=f"🎶 {display_title}")
+                else:
+                    logger.warning("Missing 'Manage Channels' permission. Cannot update VC status.")
+
+                # --- THE PLAYBACK CHAIN ---
+                
+                # Define the Final Step: The Callback when song ends
+                def after_song_ends(error):
+                    if error: logger.error(f"Song Error: {error}")
                     asyncio.run_coroutine_threadsafe(self.play_next(interaction), self.bot.loop)
 
-                voice_client.play(source, after=after_playing)
-                
+                # Define Step 2: Play the Song
+                def play_song(error=None):
+                    if error: logger.error(f"TTS Error: {error}")
+                    
+                    # Create Song Source
+                    song_source = discord.PCMVolumeTransformer(
+                        discord.FFmpegPCMAudio(stream_url, **FFMPEG_OPTIONS), 
+                        volume=self.volume
+                    )
+                    voice_client.play(song_source, after=after_song_ends)
+
+                # Define Step 1: TTS Announcement (Optional)
+                if self.tts_enabled:
+                    # Clean title: "Song Name (Official Video)" -> "Song Name"
+                    clean_title = title.split('(')[0].split('[')[0]
+                    announcement_text = f"Now playing: {clean_title}"
+                    
+                    # NEW: Await the async generator directly
+                    # (No need for loop.run_in_executor anymore because edge_tts is native async)
+                    success = await self.generate_announcement(announcement_text)
+                    
+                    if success and os.path.exists("tts_announcement.mp3"):
+                        # Play TTS, then call play_song
+                        tts_source = discord.PCMVolumeTransformer(
+                            discord.FFmpegPCMAudio("tts_announcement.mp3"), 
+                            volume=self.volume + 0.2 # Make TTS slightly louder
+                        )
+                        voice_client.play(tts_source, after=play_song)
+                    else:
+                        # Fallback if TTS fails
+                        play_song(None)
+                else:
+                    # TTS Disabled: Skip straight to song
+                    play_song(None)
+
             except Exception as e:
                 logger.error(f"Failed to play {title}: {e}")
                 self.current = None
-                await self.play_next(interaction) # Skip to next
+                await self.play_next(interaction)
         else:
             self.current = None
-            # Queue is empty - Reset Status
-            await self.bot.change_presence(
-                activity=discord.Game(name="Science | /help")
-            )
-            # Auto-disconnect if queue empty? Optional.
-            # await interaction.guild.voice_client.disconnect()
+            await self.bot.change_presence(activity=discord.Game(name="Science | /help"))
+
+    @app_commands.command(name="play-tts", description="Toggle the vocal announcement system")
+    async def toggle_tts(self, interaction: discord.Interaction):
+        self.tts_enabled = not self.tts_enabled
+        state = "ONLINE" if self.tts_enabled else "OFFLINE"
+        await interaction.response.send_message(f"🎙️ **Facility Announcer {state}.**")
 
     @app_commands.command(name="play", description="Play audio from YouTube (Search or Link)")
-    @app_commands.describe(query="Search term (e.g. 'lofi hip hop')", url="Direct YouTube Link")
-    async def play(self, interaction: discord.Interaction, query: str = None, url: str = None):
+    @app_commands.describe(query="Search term (e.g. 'lofi hip hop')", url="Direct YouTube Link", force_play="Play immediately (interrupt current)")
+    async def play(self, interaction: discord.Interaction, query: str = None, url: str = None, force_play: bool = False):
         """Robust YouTube Player"""
         await interaction.response.defer()
+        
+        # --- SAVE THE CHANNEL ---
+        self.music_channel = interaction.channel
 
         # 0. Input Validation
         if not query and not url:
@@ -127,9 +189,9 @@ class MusicCommands(commands.Cog):
 
         # 2. Search / Extraction
         if is_direct_link:
-            msg = await interaction.followup.send(f"� **Loading Link:** `{target}`...")
+            msg = await interaction.followup.send(f"**Loading Link:** `{target}`...")
         else:
-            msg = await interaction.followup.send(f"�🔍 **Searching:** `{target}`...")
+            msg = await interaction.followup.send(f"🔍 **Searching:** `{target}`...")
         
         try:
             with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
@@ -159,16 +221,72 @@ class MusicCommands(commands.Cog):
                 added_songs.append((info['url'], info['title']))
                 await msg.edit(content=f"🎵 **Added:** {info['title']}")
 
-            # 4. Add to Queue
-            self.queue.extend(added_songs)
+            # 4. Add to Queue (Normal or Play Now)
+            if force_play:
+                 # Interrupt Priority: [NewSong, CurrentSong, RestOfQueue...]
+                self.queue[0:0] = added_songs # Prepend new songs
+                
+                if vc.is_playing() and self.current:
+                    # If playing, we need to save the current song right after the new one
+                    # self.current is (url, title) tuple now
+                    self.queue.insert(len(added_songs), self.current)
+                    
+                    # Stopping triggers 'after_playing' -> play_next() -> pops index 0 (NewSong)
+                    vc.stop()
+                    await msg.edit(content=f"🚨 **Interrupted!** Playing {added_songs[0][1]} immediately.")
+                else:
+                    # If idle, just start playing
+                    if not vc.is_playing():
+                        await self.play_next(interaction)
+            else:
+                # Normal Queue
+                self.queue.extend(added_songs)
 
-            # 5. Start Playback if Idle
-            if not vc.is_playing():
-                await self.play_next(interaction)
+                # 5. Start Playback if Idle
+                if not vc.is_playing():
+                    await self.play_next(interaction)
 
         except Exception as e:
             logger.error(f"YTDL Error: {e}")
             await msg.edit(content="⚠️ **Error:** The audio processor caught fire. Check the link or try a different search.")
+
+    @app_commands.command(name="previous", description="Go back to the previous song")
+    async def previous(self, interaction: discord.Interaction):
+        """Go back to the previous song"""
+        vc = interaction.guild.voice_client
+        if not vc:
+             await interaction.response.send_message("I'm not connected.", ephemeral=True)
+             return
+
+        if not self.history:
+             await interaction.response.send_message("❌ **No history.** We can only move forward, not backward.", ephemeral=True)
+             return
+
+        # Get last song
+        last_track = self.history.pop()
+        
+        # If something is currently playing, put it back at the start of queue (so 'Skip' goes back to it)
+        # OR should we put it back in history? 
+        # Let's put it in queue pos 0 so it's "next" again.
+        if self.current:
+             self.queue.insert(0, self.current)
+        
+        # Put the previous track at SUPER priority (index 0)
+        self.queue.insert(0, last_track)
+        
+        # Stop current track to trigger play_next() which will pick up the previous track we just pushed
+        # Note: play_next normally saves current to history.
+        # We don't want to duplicate the "current" song into history if we just manually moved it to queue.
+        # So we clear current before stopping?
+        # Actually play_next saves "if self.current".
+        # If we set self.current = None here, play_next won't save it.
+        # But we ALREADY pushed it to queue. So that's correct.
+        
+        self.current = None 
+        vc.stop()
+        
+        title = last_track[1]
+        await interaction.response.send_message(f"⏮️ **Rewinding.** Playing previous track: {title}")
 
     @app_commands.command(name="skip", description="Vote to skip the current track")
     async def skip(self, interaction: discord.Interaction):
@@ -185,7 +303,10 @@ class MusicCommands(commands.Cog):
             await interaction.response.send_message("The queue is empty. Silence is inefficient.")
             return
 
-        desc = f"**Now Playing:** {self.current}\n\n**Up Next:**\n"
+        # Handle tuple vs string (compatibility)
+        current_title = self.current[1] if isinstance(self.current, tuple) else str(self.current)
+        
+        desc = f"**Now Playing:** {current_title}\n\n**Up Next:**\n"
         for i, (url, title) in enumerate(self.queue[:10], 1):
             desc += f"`{i}.` {title}\n"
         
@@ -199,13 +320,17 @@ class MusicCommands(commands.Cog):
     async def stop(self, interaction: discord.Interaction):
         vc = interaction.guild.voice_client
         if vc:
-            self.queue = [] # Wipe queue
+            # --- NEW CLEANUP LOGIC ---
+            channel = vc.channel
+            if channel.permissions_for(interaction.guild.me).manage_channels:
+                 # Setting status to None removes it
+                 await channel.edit(status=None) 
+            # -------------------------
+
+            self.queue = []
             self.current = None
             vc.stop()
             await vc.disconnect()
-            
-            # Reset Status immediately
-            await self.bot.change_presence(activity=discord.Game(name="Science | /help"))
             
             await interaction.response.send_message("🛑 **Testing Concluded.**")
         else:

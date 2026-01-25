@@ -9,3 +9,4 @@ ping3
 websocket-client
 requests
 yt-dlp
+edge-tts
