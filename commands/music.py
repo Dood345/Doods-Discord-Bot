@@ -16,6 +16,9 @@ YDL_OPTIONS = {
     'default_search': 'ytsearch', # Default to searching YouTube
     'source_address': '0.0.0.0',
     # 'match_filter': yt_dlp.utils.match_filter_func('!is_live'), # Optional: Skip livestreams
+    'js_runtimes': {
+        'node': {}
+    },
 }
 
 FFMPEG_OPTIONS = {
@@ -28,6 +31,7 @@ class MusicCommands(commands.Cog):
         self.bot = bot
         self.queue = []      # List of (url, title) tuples
         self.current = None  # Currently playing track info
+        self.volume = 0.5    # Default Volume (50%)
         
     async def cog_load(self):
         """Check for FFmpeg availability on load"""
@@ -65,7 +69,11 @@ class MusicCommands(commands.Cog):
                 stream_url = data['url']
                 
                 # 2. Play
-                source = discord.FFmpegPCMAudio(stream_url, **FFMPEG_OPTIONS)
+                # Create the raw FFmpeg source
+                ffmpeg_source = discord.FFmpegPCMAudio(stream_url, **FFMPEG_OPTIONS)
+                
+                # Wrap it in a Volume Transformer
+                source = discord.PCMVolumeTransformer(ffmpeg_source, volume=self.volume)
                 
                 def after_playing(e):
                     if e: logger.error(f"Playback error: {e}")
