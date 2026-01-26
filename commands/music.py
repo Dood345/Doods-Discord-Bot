@@ -92,16 +92,13 @@ class MusicCommands(commands.Cog):
                 stream_url = data['url']
                 
                 # 2. Update Facility Status (Local Voice Channel)
-                # We strip it to fit Discord's limit
-                display_title = (title[:30] + '..') if len(title) > 30 else title
-                
-                # NEW WAY: Local Channel Status
+                # Local Channel Status
                 vc_channel = interaction.guild.voice_client.channel
                 
                 # Check for permissions first so we don't crash if we can't edit
                 if vc_channel.permissions_for(interaction.guild.me).manage_channels:
                     # Discord status supports emojis, so we add a music note
-                    await vc_channel.edit(status=f"🎶 {display_title}")
+                    await vc_channel.edit(status=f"🎶 {title}")
                 else:
                     logger.warning("Missing 'Manage Channels' permission. Cannot update VC status.")
 
