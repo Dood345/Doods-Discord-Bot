@@ -85,6 +85,35 @@ class MusicCommands(commands.Cog):
             logger.error(f"TTS Generation failed: {e}")
             return False
 
+    def get_music_status(self, guild) -> str:
+        """Returns a string describing what is playing in the guild's channels"""
+        if not guild: return "No active guild."
+
+        status_reports = []
+        
+        # Check all voice channels in the guild
+        for channel in guild.voice_channels:
+            cid = channel.id
+            
+            # 1. Check Now Playing
+            current = self.current_tracks.get(cid)
+            queue = self.queues.get(cid, [])
+            
+            if current:
+                title = current[1]
+                status = f"🔊 In {channel.name}: Playing '{title}'"
+                if queue:
+                    status += f" (with {len(queue)} more in queue)"
+                status_reports.append(status)
+            elif queue:
+                # Not playing but has queue? (Paused or stopped but not cleared)
+                status_reports.append(f"⏱️ In {channel.name}: {len(queue)} tracks queued (Formatted/Paused)")
+        
+        if not status_reports:
+            return "Nothing is currently playing in this facility."
+            
+        return "\n".join(status_reports)
+
     async def play_next(self, interaction):
         """Callback to play the next song in the queue"""
         # STOP if bot is shutting down
@@ -246,9 +275,11 @@ class MusicCommands(commands.Cog):
         # Determine Current Bot Status
         vc = interaction.guild.voice_client
         
-        # --- NEW: Context Switching Logic ---
+        # --- Context Switching Logic ---
         # If bot is connected to a DIFFERENT channel, we switch context
         if vc and vc.channel.id != target_channel_id:
+             if vc.is_playing():
+                 vc.stop() # Stop playback from the old channel
              await vc.move_to(target_channel)
              # Update vc reference
              vc = interaction.guild.voice_client
