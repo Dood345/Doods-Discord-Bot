@@ -53,6 +53,19 @@ class MusicCommands(commands.Cog):
         except Exception as e:
             logger.warning(f"⚠️ Error checking FFmpeg: {e}")
 
+    def cog_unload(self):
+        """Cleanup when cog is unloaded (or bot shuts down)"""
+        self.queue = []
+        self.history = []
+        self.current = None
+        
+        # Disconnect from all voice channels
+        for vc in self.bot.voice_clients:
+            try:
+                self.bot.loop.create_task(vc.disconnect(force=True))
+            except Exception as e:
+                logger.error(f"Failed to disconnect cleanly: {e}")
+
     async def generate_announcement(self, text):
         """Generates a TTS mp3 file using Edge TTS (Natural Voice)"""
         try:
@@ -66,6 +79,10 @@ class MusicCommands(commands.Cog):
 
     async def play_next(self, interaction):
         """Callback to play the next song in the queue"""
+        # STOP if bot is shutting down
+        if self.bot.is_closed():
+            return
+
         if self.queue:
             # Save previous track to history if it finished naturally
             if self.current:
@@ -161,6 +178,7 @@ class MusicCommands(commands.Cog):
 
     @app_commands.command(name="play", description="Play audio from YouTube (Search or Link)")
     @app_commands.describe(query="Search term (e.g. 'lofi hip hop')", url="Direct YouTube Link", force_play="Play immediately (interrupt current)")
+    @app_commands.rename(force_play="force-play")
     async def play(self, interaction: discord.Interaction, query: str = None, url: str = None, force_play: bool = False):
         """Robust YouTube Player"""
         await interaction.response.defer()
@@ -175,6 +193,12 @@ class MusicCommands(commands.Cog):
 
         target = url if url else query
         is_direct_link = True if url else False
+        
+        # FIX: If using 'query' and it's not a link, force ytsearch: prefix
+        # This prevents yt-dlp from thinking "re:..." is a URL scheme
+        if not is_direct_link:
+            if not target.startswith(('http://', 'https://')):
+                 target = f"ytsearch:{target}"
 
         # 1. Voice Channel Check
         if not interaction.user.voice:
