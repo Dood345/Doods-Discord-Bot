@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import edge_tts
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,10 @@ class MusicCommands(commands.Cog):
         self.histories = {}       # {channel_id: [(url, title)]}
         self.notification_channels = {} # {channel_id: text_channel}
         
+        self.start_times = {}       # {channel_id: timestamp}
+        self.pause_start_times = {} # {channel_id: timestamp}
+        self.seek_positions = {}    # {channel_id: seconds_to_seek_to}
+
         self.volume = 0.5    # Default volume
         self.tts_settings = {} # {guild_id: bool} (TTS preference per server)
         
@@ -105,89 +110,108 @@ class MusicCommands(commands.Cog):
         queue = self.queues[channel_id]
         history = self.histories[channel_id]
         
-        if queue:
+        # CHECK FOR SEEK (Fast Forward)
+        seek_time = self.seek_positions.pop(channel_id, None)
+        
+        if seek_time is not None:
+             # We are seeking! Use the CURRENT track (don't pop new one)
+             # And don't save to history yet
+             current_data = self.current_tracks.get(channel_id)
+             if current_data:
+                 url, title = current_data
+             else:
+                 # Weird state, fallback to queue
+                 if queue:
+                     url, title = queue.pop(0)
+                     self.current_tracks[channel_id] = (url, title)
+                 else:
+                     await self.bot.change_presence(activity=discord.Game(name="Science | /help"))
+                     return
+        elif queue:
+            # Normal Playback
             # Save previous track to history if it finished naturally
             current = self.current_tracks.get(channel_id)
             if current:
                 history.append(current)
-                # Keep history limited to last 20 songs to save memory
-                if len(history) > 20: 
-                    history.pop(0)
+                if len(history) > 20: history.pop(0)
 
-            # Pop the next song
             url, title = queue.pop(0)
             self.current_tracks[channel_id] = (url, title)
-            
-            try:
-                # 1. Get Stream URL (JIT)
-                loop = self.bot.loop or asyncio.get_event_loop()
-                data = await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(YDL_OPTIONS).extract_info(url, download=False))
-                
-                if 'entries' in data:
-                    data = data['entries'][0]
-                
-                stream_url = data['url']
-                
-                # 2. Update Facility Status (Local Voice Channel)
-                # Local Channel Status
-                vc_channel = voice_client.channel
-                
-                # Check for permissions first so we don't crash if we can't edit
-                if vc_channel.permissions_for(interaction.guild.me).manage_channels:
-                    # Discord status supports emojis, so we add a music note
-                    await vc_channel.edit(status=f"🎶 {title}")
-                else:
-                    logger.warning("Missing 'Manage Channels' permission. Cannot update VC status.")
-
-                # --- THE PLAYBACK CHAIN ---
-                
-                # Define the Final Step: The Callback when song ends
-                def after_song_ends(error):
-                    if error: logger.error(f"Song Error: {error}")
-                    asyncio.run_coroutine_threadsafe(self.play_next(interaction), self.bot.loop)
-
-                # Define Step 2: Play the Song
-                def play_song(error=None):
-                    if error: logger.error(f"TTS Error: {error}")
-                    
-                    # Create Song Source
-                    song_source = discord.PCMVolumeTransformer(
-                        discord.FFmpegPCMAudio(stream_url, **FFMPEG_OPTIONS), 
-                        volume=self.volume
-                    )
-                    voice_client.play(song_source, after=after_song_ends)
-
-                # Define Step 1: TTS Announcement (Optional)
-                if self.tts_settings.get(interaction.guild.id, False):
-                    # Clean title: "Song Name (Official Video)" -> "Song Name"
-                    clean_title = title.split('(')[0].split('[')[0]
-                    announcement_text = f"Now playing: {clean_title}"
-                    
-                    # NEW: Await the async generator directly
-                    # (No need for loop.run_in_executor anymore because edge_tts is native async)
-                    success = await self.generate_announcement(announcement_text)
-                    
-                    if success and os.path.exists("tts_announcement.mp3"):
-                        # Play TTS, then call play_song
-                        tts_source = discord.PCMVolumeTransformer(
-                            discord.FFmpegPCMAudio("tts_announcement.mp3"), 
-                            volume=self.volume + 0.2 # Make TTS slightly louder
-                        )
-                        voice_client.play(tts_source, after=play_song)
-                    else:
-                        # Fallback if TTS fails
-                        play_song(None)
-                else:
-                    # TTS Disabled: Skip straight to song
-                    play_song(None)
-
-            except Exception as e:
-                logger.error(f"Failed to play {title}: {e}")
-                self.current_tracks[channel_id] = None
-                await self.play_next(interaction)
         else:
             self.current_tracks[channel_id] = None
             await self.bot.change_presence(activity=discord.Game(name="Science | /help"))
+            return
+            
+        try:
+            # 1. Get Stream URL (JIT)
+            loop = self.bot.loop or asyncio.get_event_loop()
+            data = await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(YDL_OPTIONS).extract_info(url, download=False))
+            
+            if 'entries' in data:
+                data = data['entries'][0]
+            
+            stream_url = data['url']
+            
+            # 2. Update Facility Status
+            vc_channel = voice_client.channel
+            if vc_channel.permissions_for(interaction.guild.me).manage_channels:
+                if seek_time:
+                    await vc_channel.edit(status=f"⏩ {title} (+{int(seek_time)}s)")
+                else:
+                    await vc_channel.edit(status=f"🎶 {title}")
+            else:
+                logger.warning("Missing 'Manage Channels' permission. Cannot update VC status.")
+
+            # --- THE PLAYBACK CHAIN ---
+            
+            def after_song_ends(error):
+                if error: logger.error(f"Song Error: {error}")
+                asyncio.run_coroutine_threadsafe(self.play_next(interaction), self.bot.loop)
+
+            def play_song(error=None):
+                if error: logger.error(f"TTS Error: {error}")
+                
+                # Dynamic FFMPEG Options for Seeking
+                current_opts = FFMPEG_OPTIONS.copy()
+                if seek_time:
+                    # Inject -ss before_options
+                    # We append it to existing options
+                    current_opts['before_options'] += f" -ss {seek_time}"
+                
+                # Create Song Source
+                song_source = discord.PCMVolumeTransformer(
+                    discord.FFmpegPCMAudio(stream_url, **current_opts), 
+                    volume=self.volume
+                )
+                voice_client.play(song_source, after=after_song_ends)
+                
+                # Record Start Time (Adjusted for seek so Elapsed Time logic works)
+                # If we seek to 30s, we pretend we started 30s ago.
+                self.start_times[channel_id] = time.time() - (seek_time if seek_time else 0)
+
+            # Define Step 1: TTS Announcement (Skip if Seeking)
+            if not seek_time and self.tts_settings.get(interaction.guild.id, False):
+                clean_title = title.split('(')[0].split('[')[0]
+                announcement_text = f"Now playing: {clean_title}"
+                
+                success = await self.generate_announcement(announcement_text)
+                
+                if success and os.path.exists("tts_announcement.mp3"):
+                    tts_source = discord.PCMVolumeTransformer(
+                        discord.FFmpegPCMAudio("tts_announcement.mp3"), 
+                        volume=self.volume + 0.2
+                    )
+                    voice_client.play(tts_source, after=play_song)
+                else:
+                    play_song(None)
+            else:
+                play_song(None)
+
+        except Exception as e:
+            logger.error(f"Failed to play {title}: {e}")
+            # If seek fails, just move next
+            self.current_tracks[channel_id] = None
+            await self.play_next(interaction)
 
     @app_commands.command(name="play-tts", description="Toggle the vocal announcement system")
     async def toggle_tts(self, interaction: discord.Interaction):
@@ -423,6 +447,26 @@ class MusicCommands(commands.Cog):
         embed = discord.Embed(title="🎧 Audio Testing Queue", description=desc, color=0xFFA500)
         await interaction.response.send_message(embed=embed)
         
+    @app_commands.command(name="clear", description="Clear the upcoming tracks")
+    async def clear(self, interaction: discord.Interaction):
+        vc = interaction.guild.voice_client
+        if not vc or not vc.channel:
+            await interaction.response.send_message("I'm not connected.", ephemeral=True)
+            return
+            
+        channel_id = vc.channel.id
+        if channel_id in self.queues:
+            count = len(self.queues[channel_id])
+            self.queues[channel_id] = []
+            await interaction.response.send_message(f"🗑️ **Queue Cleared.** Removed {count} upcoming tracks.")
+        else:
+            await interaction.response.send_message("Queue is already empty.", ephemeral=True)
+
+    @app_commands.command(name="list", description="List specific songs in the queue")
+    async def list_queue(self, interaction: discord.Interaction):
+        """Alias for queue"""
+        await self.view_queue(interaction)
+
     @app_commands.command(name="stop", description="Clear queue and disconnect")
     async def stop(self, interaction: discord.Interaction):
         vc = interaction.guild.voice_client
@@ -438,7 +482,9 @@ class MusicCommands(commands.Cog):
             # Clear state for this channel
             if channel_id in self.queues: self.queues[channel_id] = []
             if channel_id in self.current_tracks: self.current_tracks[channel_id] = None
-            # History? Lets keep history for now.
+            if channel_id in self.start_times: del self.start_times[channel_id]
+            if channel_id in self.pause_start_times: del self.pause_start_times[channel_id]
+            if channel_id in self.seek_positions: del self.seek_positions[channel_id]
              
             vc.stop()
             await vc.disconnect()
@@ -446,6 +492,67 @@ class MusicCommands(commands.Cog):
             await interaction.response.send_message("🛑 **Testing Concluded.**")
         else:
             await interaction.response.send_message("I'm not connected.", ephemeral=True)
+
+    @app_commands.command(name="fast-forward", description="Skip forward in the current track")
+    @app_commands.describe(seconds="Seconds to skip (Default: 30)")
+    async def fast_forward(self, interaction: discord.Interaction, seconds: int = 30):
+        vc = interaction.guild.voice_client
+        if not vc or not vc.is_playing():
+            await interaction.response.send_message("❌ **Nothing is playing.** cannot fast forward silence.", ephemeral=True)
+            return
+
+        channel_id = vc.channel.id
+        
+        start_time = self.start_times.get(channel_id)
+        if not start_time:
+             await interaction.response.send_message("⚠️ **Time Error.** Cannot determine current track position.", ephemeral=True)
+             return
+             
+        # Calculate current position
+        current_pos = time.time() - start_time
+        target_pos = current_pos + seconds
+        
+        # Set seek target
+        self.seek_positions[channel_id] = target_pos
+        
+        await interaction.response.send_message(f"⏩ **Fast Forwarding** {seconds}s... (Target: {int(target_pos)}s)")
+        
+        # Stop current track to trigger 'after' -> 'play_next' -> sees seek_positions -> seeks
+        vc.stop()
+
+    @app_commands.command(name="play-pause", description="Pause or Resume playback")
+    async def play_pause(self, interaction: discord.Interaction):
+        vc = interaction.guild.voice_client
+        if not vc:
+             await interaction.response.send_message("I'm not connected.", ephemeral=True)
+             return
+             
+        channel_id = vc.channel.id
+        
+        if vc.is_paused():
+            # RESUME
+            vc.resume()
+            
+            # Adjust start time so elapsed time calculation remains correct
+            # We effectively "shift" the start time forward by the duration we were paused
+            if channel_id in self.pause_start_times:
+                pause_duration = time.time() - self.pause_start_times[channel_id]
+                if channel_id in self.start_times:
+                    self.start_times[channel_id] += pause_duration
+                del self.pause_start_times[channel_id]
+            
+            await interaction.response.send_message("▶️ **Resumed.**")
+            
+        elif vc.is_playing():
+            # PAUSE
+            vc.pause()
+            
+            # Record when we paused
+            self.pause_start_times[channel_id] = time.time()
+            
+            await interaction.response.send_message("II **Paused.**")
+        else:
+            await interaction.response.send_message("❌ **Nothing is playing.**", ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(MusicCommands(bot))
