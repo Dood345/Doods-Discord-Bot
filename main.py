@@ -5,8 +5,7 @@ import os
 import logging
 from datetime import datetime
 from dotenv import load_dotenv
-from flask import Flask
-from threading import Thread
+
 
 # Load environment variables FIRST before importing config
 load_dotenv()
@@ -23,27 +22,14 @@ from commands.misc_commands import MiscCommands
 from commands.gift_commands import GiftCommands
 from commands.homelab_commands import HomeLabCommands
 from commands.image_cog import ImageCog
+from commands.music import MusicCommands
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
-# KEEP ALIVE for free hosting solutions
-app = Flask('')
 
-@app.route('/')
-def home():
-    return "I'm alive"
-
-def run():
-  # Cloud Run provides the PORT environment variable
-  port = int(os.environ.get("PORT", 6969))
-  app.run(host='0.0.0.0', port=port)
-
-def keep_alive():
-    t = Thread(target=run)
-    t.start()
 
 
 class DoodsBot(commands.Bot):
@@ -52,7 +38,7 @@ class DoodsBot(commands.Bot):
         intents.message_content = True
         
         super().__init__(
-            command_prefix='/',
+            command_prefix='!',
             intents=intents,
             case_insensitive=True,
             help_command=None  # We'll use custom help
@@ -64,7 +50,7 @@ class DoodsBot(commands.Bot):
         # Initialize Database
         self.db = DatabaseHandler()
         
-        self.ai_handler = AIHandler(self.db)
+        self.ai_handler = AIHandler(self.db, self)
         self.reaction_handler = ReactionHandler()
         
         # User conversation histories for AI
@@ -83,46 +69,20 @@ class DoodsBot(commands.Bot):
         await self.add_cog(GiftCommands(self))
         await self.add_cog(HomeLabCommands(self))
         await self.add_cog(ImageCog(self))
+        await self.add_cog(MusicCommands(self))
         
         logger.info("All cogs loaded successfully")
     
     async def on_ready(self):
         """Called when bot connects to Discord"""
-        logger.info(f'{self.user} has landed and is ready for shenanigans!')
-        logger.info(f'Servers: {len(self.guilds)}')
+        logger.info(f'🚀 {self.user} is online! Serving {len(self.guilds)} guilds.')
         
         # Set bot status
         await self.change_presence(
-            activity=discord.Game(name="Playing with propane accessories")
+            activity=discord.Game(name="Science | /help")
         )
         
-        # Sync Slash Commands
-        try:
-            if self.config.SERVER_IDS:
-                # 1. Sync to specific servers (Dev/Home Mode)
-                logger.info(f"Syncing to {len(self.config.SERVER_IDS)} servers...")
-                for server_id in self.config.SERVER_IDS:
-                    try:
-                        guild = discord.Object(id=server_id)
-                        self.tree.copy_global_to(guild=guild)
-                        await self.tree.sync(guild=guild)
-                        logger.info(f"⚡ Slash commands synced to guild {server_id}")
-                    except Exception as e:
-                        logger.error(f"Failed to sync to guild {server_id}: {e}")
-                
-                # 2. CLEAR Global commands to avoid duplicates
-                # This ensures commands only appear once (as Guild commands)
-                # and don't linger as "Global" commands from previous runs
-                self.tree.clear_commands(guild=None)
-                await self.tree.sync()
-                logger.info("🗑️ Cleared global commands to prevent duplicates")
-            else:
-                # 3. If no Server IDs, sync globally (Public Bot Mode)
-                await self.tree.sync()
-                logger.info(f"🌍 Global slash commands synced (may take up to 1 hour to propagate)")
-            
-        except Exception as e:
-            logger.error(f"Failed to sync slash commands: {e}")
+        # NOTE: Auto-sync logic removed. Use !sync . to sync.
     
     async def on_message(self, message):
         """Handle all messages"""
@@ -144,7 +104,23 @@ class DoodsBot(commands.Bot):
                 async with message.channel.typing():
                     # Get guild ID if available (for context awareness)
                     guild_id = message.guild.id if message.guild else None
-                    response = await self.ai_handler.get_chat_response(message.author.id, content, guild_id)
+                    
+                    # --- NEW: REPLY CONTEXT LOGIC ---
+                    reply_context = None
+                    if message.reference and message.reference.message_id:
+                        try:
+                            # Fetch the message they are replying to
+                            # We use fetch because the message might be old and not in cache
+                            ref_msg = await message.channel.fetch_message(message.reference.message_id)
+                            
+                            # Format it: "Author Name: Message Content"
+                            reply_context = f"REPLIED TO -> {ref_msg.author.display_name}: {ref_msg.content}"
+                        except Exception:
+                            # Message might have been deleted or inaccessible
+                            pass
+                    # ---------------------------------
+
+                    response = await self.ai_handler.get_chat_response(message.author.id, content, guild_id, reply_context=reply_context)
                     if response:
                         await message.reply(response)
                     else:
@@ -171,10 +147,30 @@ if __name__ == "__main__":
     if not token:
         logger.error("DISCORD_TOKEN not found in .env file")
         exit(1)
-    
-    keep_alive() # Starts the web server
 
     bot = DoodsBot()
+
+    # --- THE MAGIC SYNC COMMAND ---
+    # Only the owner (you) can run this.
+    # Usage: 
+    #   !sync        -> Syncs globally (takes 1 hour to appear everywhere)
+    #   !sync .      -> Syncs to THIS server instantly (for testing)
+    @bot.command()
+    @commands.is_owner()
+    async def sync(ctx, spec: str = None):
+        if spec == ".":
+            # Instant sync to current server
+            synced = await ctx.bot.tree.sync(guild=ctx.guild)
+            await ctx.send(f"⚡ Synced {len(synced)} commands to **this server** instantly.")
+        elif spec == "clear":
+            # Nuke commands (if you made a mess)
+            ctx.bot.tree.clear_commands(guild=ctx.guild)
+            await ctx.bot.tree.sync(guild=ctx.guild)
+            await ctx.send("🗑️ Cleared local guild commands.")
+        else:
+            # Standard Global Sync
+            synced = await ctx.bot.tree.sync()
+            await ctx.send(f"🌍 Synced {len(synced)} commands **Globally**. (Updates in ~1 hour).")
     
     try:
         logger.info("Starting bot...")

@@ -18,6 +18,32 @@ class MiscCommands(commands.Cog):
         self.config = bot.config
         self.ai_handler = bot.ai_handler
     
+    @app_commands.command(name="ai", description="Talk to Cave Johnson directly")
+    async def chat_ai(self, interaction: discord.Interaction, prompt: str):
+        """Unified AI Chat Command"""
+        await interaction.response.defer()
+        
+        if self.ai_handler.is_available():
+            # Call the SAME handler that on_message uses
+            response = await self.ai_handler.get_chat_response(
+                user_id=interaction.user.id,
+                message=prompt,
+                guild_id=interaction.guild.id
+            )
+            
+            if response:
+                await interaction.followup.send(f"{response}")
+            else:
+                await interaction.followup.send("⚠️ **Cave:** The AI core is overheating. Try again in a moment.")
+        else:
+            await interaction.followup.send("⚠️ AI features are disabled (Missing API Key).")
+
+    @app_commands.command(name='clearhistory', description="Clear your AI conversation history")
+    async def clear_history(self, interaction: discord.Interaction):
+        """Clear your AI conversation history"""
+        self.ai_handler.clear_user_history(interaction.user.id)
+        await interaction.response.send_message("🤖 **Cave Johnson:** Memory banks wiped. I never saw you, you never saw me.", ephemeral=True)
+    
     @app_commands.command(name='beer', description="Get a beer recommendation")
     async def beer_recommendation(self, interaction: discord.Interaction, preferences: str = None):
         """Get a beer recommendation, with AI power!"""
