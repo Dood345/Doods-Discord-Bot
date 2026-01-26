@@ -177,9 +177,14 @@ class MusicCommands(commands.Cog):
         await interaction.response.send_message(f"🎙️ **Facility Announcer {state}.**")
 
     @app_commands.command(name="play", description="Play audio from YouTube (Search or Link)")
-    @app_commands.describe(query="Search term (e.g. 'lofi hip hop')", url="Direct YouTube Link", force_play="Play immediately (interrupt current)")
-    @app_commands.rename(force_play="force-play")
-    async def play(self, interaction: discord.Interaction, query: str = None, url: str = None, force_play: bool = False):
+    @app_commands.describe(
+        query="Search term (e.g. 'lofi hip hop')", 
+        url="Direct YouTube Link", 
+        force_play="Play immediately (interrupt current)",
+        playlist_only="Search specifically for playlists (Default: False)"
+    )
+    @app_commands.rename(force_play="force-play", playlist_only="playlist-only")
+    async def play(self, interaction: discord.Interaction, query: str = None, url: str = None, force_play: bool = False, playlist_only: bool = False):
         """Robust YouTube Player"""
         await interaction.response.defer()
         
@@ -198,7 +203,14 @@ class MusicCommands(commands.Cog):
         # This prevents yt-dlp from thinking "re:..." is a URL scheme
         if not is_direct_link:
             if not target.startswith(('http://', 'https://')):
-                 target = f"ytsearch:{target}"
+                 # NEW: Custom Playlist Search Logic
+                 if playlist_only:
+                     import urllib.parse
+                     encoded_query = urllib.parse.quote(target)
+                     # sp=EgIQAw%253D%253D is the "Type: Playlist" filter
+                     target = f"https://www.youtube.com/results?search_query={encoded_query}&sp=EgIQAw%253D%253D"
+                 else:
+                     target = f"ytsearch:{target}"
 
         # 1. Voice Channel Check
         if not interaction.user.voice:
@@ -212,6 +224,8 @@ class MusicCommands(commands.Cog):
         # 2. Search / Extraction
         if is_direct_link:
             msg = await interaction.followup.send(f"**Loading Link:** `{target}`...")
+        elif playlist_only:
+             msg = await interaction.followup.send(f"🔍 **Searching for Playlist:** `{query}`...")
         else:
             msg = await interaction.followup.send(f"🔍 **Searching:** `{target}`...")
         
@@ -222,16 +236,38 @@ class MusicCommands(commands.Cog):
 
             # 3. Handle Results (Single vs Playlist)
             added_songs = []
-            
+
+            # NEW: Handle our custom valid playlist search results
+            if playlist_only and not is_direct_link:
+                # The 'info' from our custom URL will be a list of search results (playlists)
+                if 'entries' in info:
+                    # Filter out non-playlist results just in case, or take the first one
+                    entries = list(info['entries']) # resolve generator
+                    if not entries:
+                        await msg.edit(content=f"❌ **No Playlists Found** for `{query}`.")
+                        return
+                    
+                    # The first entry IS the playlist we want, but it's just a reference url
+                    found_playlist = entries[0]
+                    playlist_url = found_playlist['url']
+                    
+                    # We must EXTRACT the actual playlist now
+                    with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+                         info = ydl.extract_info(playlist_url, download=False)
+                    
+                    # Update info to be the playlist info now
+                    
             if 'entries' in info:
                 # It's a Playlist or a Search Result
-                if info.get('_type') == 'playlist' and len(info['entries']) > 1:
-                    # It is an ACTUAL playlist
+                if info.get('_type') == 'playlist':
+                    # It is an ACTUAL playlist (either direct link OR our found playlist)
                     for entry in info['entries']:
-                        added_songs.append((entry['url'], entry['title']))
+                         if entry: # sometimes entries can be None
+                            added_songs.append((entry['url'], entry['title']))
                     await msg.edit(content=f"📝 **Playlist Queued:** Added {len(added_songs)} tracks from *{info['title']}*.")
                 else:
                     # It is a Search Result (take the first one)
+                    # Note: If playlist_only, we shouldn't get here because we re-extracted above
                     entry = info['entries'][0]
                     added_songs.append((entry['url'], entry['title']))
                     if is_direct_link:
@@ -239,11 +275,15 @@ class MusicCommands(commands.Cog):
                     else:
                         await msg.edit(content=f"🎵 **Found:** {entry['title']}")
             else:
-                # Direct Link
+                # Direct Link to video
                 added_songs.append((info['url'], info['title']))
                 await msg.edit(content=f"🎵 **Added:** {info['title']}")
 
             # 4. Add to Queue (Normal or Play Now)
+            if not added_songs:
+                 await msg.edit(content="❌ **Error:** No playable tracks found.")
+                 return
+
             if force_play:
                  # Interrupt Priority: [NewSong, CurrentSong, RestOfQueue...]
                 self.queue[0:0] = added_songs # Prepend new songs
