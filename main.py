@@ -104,7 +104,23 @@ class DoodsBot(commands.Bot):
                 async with message.channel.typing():
                     # Get guild ID if available (for context awareness)
                     guild_id = message.guild.id if message.guild else None
-                    response = await self.ai_handler.get_chat_response(message.author.id, content, guild_id)
+                    
+                    # --- NEW: REPLY CONTEXT LOGIC ---
+                    reply_context = None
+                    if message.reference and message.reference.message_id:
+                        try:
+                            # Fetch the message they are replying to
+                            # We use fetch because the message might be old and not in cache
+                            ref_msg = await message.channel.fetch_message(message.reference.message_id)
+                            
+                            # Format it: "Author Name: Message Content"
+                            reply_context = f"REPLIED TO -> {ref_msg.author.display_name}: {ref_msg.content}"
+                        except Exception:
+                            # Message might have been deleted or inaccessible
+                            pass
+                    # ---------------------------------
+
+                    response = await self.ai_handler.get_chat_response(message.author.id, content, guild_id, reply_context=reply_context)
                     if response:
                         await message.reply(response)
                     else:

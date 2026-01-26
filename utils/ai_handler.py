@@ -69,7 +69,7 @@ class AIHandler:
             logger.error(f"AI character response error for {character}: {e}")
             return None
     
-    async def get_chat_response(self, user_id: int, message: str, guild_id: int = None) -> Optional[str]:
+    async def get_chat_response(self, user_id: int, message: str, guild_id: int = None, reply_context: str = None) -> Optional[str]:
         """Get AI response for general chat with persistent database memory and context awareness"""
         if not self.is_available():
             return None
@@ -88,6 +88,10 @@ class AIHandler:
                 context += "\n"
             else:
                 context = "Previous conversation history: None\n"
+            
+            # --- REPLY CONTEXT ---
+            if reply_context:
+                context += f"\n[SYSTEM NOTICE]: The user is replying to a specific message:\n{reply_context}\n"
             
             # Server Awareness
             location_data = BotConfig.SERVER_CONTEXTS.get(
@@ -214,7 +218,7 @@ class AIHandler:
             logger.error(f"AI chat response error: {e}")
             return None
     
-    async def get_roast_response(self, character: str, target_name: str) -> Optional[str]:
+    async def get_roast_response(self, character: str, target_name: str, chat_history: List[Tuple[str, str]] = None) -> Optional[str]:
         """Generate a character-based roast"""
         if not self.is_available() or character not in self.config.CHARACTER_PROMPTS:
             return None
@@ -240,7 +244,24 @@ class AIHandler:
                 'dante': f"{self.config.CHARACTER_PROMPTS['dante']}\n\nRoast this Discord user named '{target_name}' by assigning them to an appropriate circle of hell for their sins. Keep it poetic and under 150 characters:"
             }
             
-            prompt = roast_prompts.get(character, f"Roast {target_name} in a funny way, under 150 characters:")
+            # Build history string if available
+            history_text = ""
+            if chat_history:
+                # Filter to only show what the USER said (role='user') to give material for the roast
+                user_msgs = [f"- {content}" for role, content in chat_history if role == 'user']
+                if user_msgs:
+                    # Take last 10 messages max
+                    evidence = "\n".join(user_msgs[:10])
+                    history_text = f"\n\nHere is a log of recent things {target_name} has said (use this to hurt them):\n{evidence}\n"
+
+            base_prompt = roast_prompts.get(character, f"Roast {target_name} in a funny way, under 150 characters:")
+            
+            # Inject history if available
+            if history_text:
+                prompt = f"{history_text}\n{base_prompt}"
+            else:
+                prompt = base_prompt
+
             response = await asyncio.to_thread(self.model.generate_content, prompt)
             return response.text.strip()
             
@@ -248,7 +269,7 @@ class AIHandler:
             logger.error(f"AI roast error for {character}: {e}")
             return None
     
-    async def get_compliment_response(self, character: str, target_name: str) -> Optional[str]:
+    async def get_compliment_response(self, character: str, target_name: str, chat_history: List[Tuple[str, str]] = None) -> Optional[str]:
         """Generate a character-based compliment"""
         if not self.is_available() or character not in self.config.CHARACTER_PROMPTS:
             return None
@@ -274,7 +295,23 @@ class AIHandler:
                 'dante': f"{self.config.CHARACTER_PROMPTS['dante']}\n\nCompliment '{target_name}' by suggesting they have the potential for redemption and paradise. Under 150 characters:"
             }
             
-            prompt = compliment_prompts.get(character, f"Compliment {target_name} in a nice way, under 150 characters:")
+            # Build history string if available
+            history_text = ""
+            if chat_history:
+                 # Filter to only show what the USER said
+                user_msgs = [f"- {content}" for role, content in chat_history if role == 'user']
+                if user_msgs:
+                    evidence = "\n".join(user_msgs[:10])
+                    history_text = f"\n\nHere is a log of recent things {target_name} has said:\n{evidence}\n"
+
+            base_prompt = compliment_prompts.get(character, f"Compliment {target_name} in a nice way, under 150 characters:")
+            
+             # Inject history if available
+            if history_text:
+                prompt = f"{history_text}\n{base_prompt}"
+            else:
+                prompt = base_prompt
+
             response = await asyncio.to_thread(self.model.generate_content, prompt)
             return response.text.strip()
             
