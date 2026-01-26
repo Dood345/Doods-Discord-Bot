@@ -295,11 +295,18 @@ class DatabaseHandler:
         except Exception as e:
             logger.error(f"Failed to add AI message: {e}")
 
-    def get_ai_history(self, user_id: int, guild_id: int, limit: int = 20) -> List[Tuple[str, str]]:
+    def get_ai_history(self, user_id: int, guild_id: int = None, limit: int = 20) -> List[Tuple[str, str]]:
         try:
             conn = self.get_connection()
             c = conn.cursor()
-            c.execute("SELECT role, content FROM ai_history WHERE user_id = ? AND guild_id = ? ORDER BY id DESC LIMIT ?", (user_id, guild_id, limit))
+            
+            if guild_id is None:
+                # Global Context (All Servers)
+                c.execute("SELECT role, content FROM ai_history WHERE user_id = ? ORDER BY id DESC LIMIT ?", (user_id, limit))
+            else:
+                # Local Context (Specific Server)
+                c.execute("SELECT role, content FROM ai_history WHERE user_id = ? AND guild_id = ? ORDER BY id DESC LIMIT ?", (user_id, guild_id, limit))
+                
             rows = c.fetchall()
             conn.close()
             return list(reversed(rows))

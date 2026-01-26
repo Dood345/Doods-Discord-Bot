@@ -52,6 +52,19 @@ class MusicCommands(commands.Cog):
         except Exception as e:
             logger.warning(f"⚠️ Error checking FFmpeg: {e}")
 
+    def cog_unload(self):
+        """Cleanup when cog is unloaded (or bot shuts down)"""
+        self.queue = []
+        self.history = []
+        self.current = None
+        
+        # Disconnect from all voice channels
+        for vc in self.bot.voice_clients:
+            try:
+                self.bot.loop.create_task(vc.disconnect(force=True))
+            except Exception as e:
+                logger.error(f"Failed to disconnect cleanly: {e}")
+
     async def generate_announcement(self, text):
         """Generates a TTS mp3 file using Edge TTS (Natural Voice)"""
         try:
@@ -65,6 +78,10 @@ class MusicCommands(commands.Cog):
 
     async def play_next(self, interaction):
         """Callback to play the next song in the queue"""
+        # STOP if bot is shutting down
+        if self.bot.is_closed():
+            return
+
         if self.queue:
             # Save previous track to history if it finished naturally
             if self.current:
