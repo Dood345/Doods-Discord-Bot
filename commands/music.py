@@ -18,6 +18,7 @@ YDL_OPTIONS = {
     'default_search': 'ytsearch', # Default to searching YouTube
     'source_address': '0.0.0.0',
     # 'match_filter': yt_dlp.utils.match_filter_func('!is_live'), # Optional: Skip livestreams
+    'cookies': 'www.youtube.com_cookies.txt',
     'js_runtimes': {
         'node': {}
     },
