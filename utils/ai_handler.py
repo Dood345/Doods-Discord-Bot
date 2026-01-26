@@ -145,15 +145,14 @@ class AIHandler:
             
             # Context: Music Status
             music_context = ""
-            if self.bot:
+            if self.bot and guild_id:
                 music_cog = self.bot.get_cog("MusicCommands")
-                if music_cog and music_cog.current:
-                    # music_cog.current is (url, title) tuple
-                    try:
-                        title = music_cog.current[1]
-                        music_context = f"CURRENTLY PLAYING MUSIC: '{title}'. If the user asks about the music, refer to this."
-                    except Exception as e:
-                        logger.error(f"Error fetching music context: {e}")
+                if music_cog:
+                    # Retrieve comprehensive status for the server
+                    guild = self.bot.get_guild(guild_id)
+                    if guild:
+                        status_str = music_cog.get_music_status(guild)
+                        music_context = f"CURRENT FACILITY MUSIC STATUS:\n{status_str}\nIf the user asks what is playing, report this exact status."
             
             # 3. Create prompt
             system_prompt = self._get_persona_system_prompt()
