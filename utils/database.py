@@ -25,7 +25,12 @@ class DatabaseHandler:
                         (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, item_name TEXT, link TEXT, claimed_by INTEGER)''')
             
             c.execute('''CREATE TABLE IF NOT EXISTS ai_history
-                        (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, role TEXT, content TEXT, timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+                        (id INTEGER PRIMARY KEY AUTOINCREMENT, 
+                         user_id INTEGER, 
+                         guild_id INTEGER,
+                         role TEXT, 
+                         content TEXT, 
+                         timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
             
             # --- NEW: Games Repository ---
             # Status: 'seen', 'played', 'playing', 'wishlist'
@@ -48,12 +53,13 @@ class DatabaseHandler:
                          created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
 
             # --- NEW: Ratings/Votes ---
-            # One rating per user per game to prevent ballot stuffing
+            # One rating per user per game per server
             c.execute('''CREATE TABLE IF NOT EXISTS game_ratings
                         (game_id INTEGER,
                          user_id INTEGER,
+                         guild_id INTEGER,
                          rating INTEGER CHECK(rating >= 1 AND rating <= 10),
-                         PRIMARY KEY (game_id, user_id),
+                         PRIMARY KEY (game_id, user_id, guild_id),
                          FOREIGN KEY(game_id) REFERENCES games(id) ON DELETE CASCADE)''')
 
             # --- NEW: Tagging System (Normalized) ---
@@ -114,13 +120,13 @@ class DatabaseHandler:
             logger.error(f"Failed to add game: {e}")
             return -1
 
-    def rate_game(self, game_id: int, user_id: int, rating: int):
+    def rate_game(self, game_id: int, user_id: int, guild_id: int, rating: int):
         """Submit a mandatory performance review for a simulation."""
         try:
             conn = self.get_connection()
             c = conn.cursor()
-            c.execute("INSERT OR REPLACE INTO game_ratings (game_id, user_id, rating) VALUES (?, ?, ?)",
-                      (game_id, user_id, rating))
+            c.execute("INSERT OR REPLACE INTO game_ratings (game_id, user_id, guild_id, rating) VALUES (?, ?, ?, ?)",
+                      (game_id, user_id, guild_id, rating))
             conn.commit()
             conn.close()
         except Exception as e:
@@ -160,6 +166,7 @@ class DatabaseHandler:
             logger.error(f"Tagging failed: {e}")
 
     def get_game_library(self, 
+                         guild_id: int = None,
                          status_filter: Optional[str] = None, 
                          tag_filter: str = None, 
                          player_count: int = None,
@@ -173,18 +180,21 @@ class DatabaseHandler:
             conn.row_factory = sqlite3.Row # Allows accessing columns by name
             c = conn.cursor()
             
+            # Using basic concatenation for the JOIN condition parameter isn't standard SQL binding for identifiers or logic blocks unless we construct the string carefully.
+            # However, we can simply bind the guild_id in the execute call.
+            
             query = """
                 SELECT g.*, 
                        AVG(r.rating) as avg_rating,
                        GROUP_CONCAT(t.name, ', ') as tags
                 FROM games g
-                LEFT JOIN game_ratings r ON g.id = r.game_id
+                LEFT JOIN game_ratings r ON g.id = r.game_id AND r.guild_id = ?
                 LEFT JOIN game_tags gt ON g.id = gt.game_id
                 LEFT JOIN tags t ON gt.tag_id = t.id
                 WHERE 1=1
             """
             
-            params = []
+            params = [guild_id] # Start with guild_id for the JOIN
             
             # Dynamic Filters
             if status_filter:
@@ -275,21 +285,21 @@ class DatabaseHandler:
             return []
 
     # --- AI History Methods (Kept from your original) ---
-    def add_ai_message(self, user_id: int, role: str, content: str):
+    def add_ai_message(self, user_id: int, guild_id: int, role: str, content: str):
         try:
             conn = self.get_connection()
             c = conn.cursor()
-            c.execute("INSERT INTO ai_history (user_id, role, content) VALUES (?, ?, ?)", (user_id, role, content))
+            c.execute("INSERT INTO ai_history (user_id, guild_id, role, content) VALUES (?, ?, ?, ?)", (user_id, guild_id, role, content))
             conn.commit()
             conn.close()
         except Exception as e:
             logger.error(f"Failed to add AI message: {e}")
 
-    def get_ai_history(self, user_id: int, limit: int = 20) -> List[Tuple[str, str]]:
+    def get_ai_history(self, user_id: int, guild_id: int, limit: int = 20) -> List[Tuple[str, str]]:
         try:
             conn = self.get_connection()
             c = conn.cursor()
-            c.execute("SELECT role, content FROM ai_history WHERE user_id = ? ORDER BY id DESC LIMIT ?", (user_id, limit))
+            c.execute("SELECT role, content FROM ai_history WHERE user_id = ? AND guild_id = ? ORDER BY id DESC LIMIT ?", (user_id, guild_id, limit))
             rows = c.fetchall()
             conn.close()
             return list(reversed(rows))

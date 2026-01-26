@@ -92,16 +92,13 @@ class MusicCommands(commands.Cog):
                 stream_url = data['url']
                 
                 # 2. Update Facility Status (Local Voice Channel)
-                # We strip it to fit Discord's limit
-                display_title = (title[:30] + '..') if len(title) > 30 else title
-                
-                # NEW WAY: Local Channel Status
+                # Local Channel Status
                 vc_channel = interaction.guild.voice_client.channel
                 
                 # Check for permissions first so we don't crash if we can't edit
                 if vc_channel.permissions_for(interaction.guild.me).manage_channels:
                     # Discord status supports emojis, so we add a music note
-                    await vc_channel.edit(status=f"🎶 {display_title}")
+                    await vc_channel.edit(status=f"🎶 {title}")
                 else:
                     logger.warning("Missing 'Manage Channels' permission. Cannot update VC status.")
 
@@ -163,6 +160,7 @@ class MusicCommands(commands.Cog):
 
     @app_commands.command(name="play", description="Play audio from YouTube (Search or Link)")
     @app_commands.describe(query="Search term (e.g. 'lofi hip hop')", url="Direct YouTube Link", force_play="Play immediately (interrupt current)")
+    @app_commands.rename(force_play="force-play")
     async def play(self, interaction: discord.Interaction, query: str = None, url: str = None, force_play: bool = False):
         """Robust YouTube Player"""
         await interaction.response.defer()
@@ -177,6 +175,12 @@ class MusicCommands(commands.Cog):
 
         target = url if url else query
         is_direct_link = True if url else False
+        
+        # FIX: If using 'query' and it's not a link, force ytsearch: prefix
+        # This prevents yt-dlp from thinking "re:..." is a URL scheme
+        if not is_direct_link:
+            if not target.startswith(('http://', 'https://')):
+                 target = f"ytsearch:{target}"
 
         # 1. Voice Channel Check
         if not interaction.user.voice:
