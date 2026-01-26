@@ -5,6 +5,7 @@ import google.generativeai as genai
 import logging
 from typing import Optional, Dict, List, Tuple
 from config import BotConfig
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ class AIHandler:
         if api_key:
             try:
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-3-flash-preview')
+                model = genai.GenerativeModel('gemini-2.5-flash')
                 logger.info("AI model initialized successfully")
                 return model
             except Exception as e:
@@ -61,7 +62,7 @@ class AIHandler:
         
         try:
             prompt = f"{self.config.CHARACTER_PROMPTS[character]}\n\nUser said: '{user_input}'\n\nRespond in character:"
-            response = self.model.generate_content(prompt)
+            response = await asyncio.to_thread(self.model.generate_content, prompt)
             return response.text.strip()
         except Exception as e:
             logger.error(f"AI character response error for {character}: {e}")
@@ -74,7 +75,7 @@ class AIHandler:
         
         try:
             # 1. Get recent context from DB
-            history = self.db.get_ai_history(user_id, limit=20) # Get last 20 messages
+            history = self.db.get_ai_history(user_id, guild_id, limit=20) # Get last 20 messages
             
             # 2. Build context string
             context = ""
@@ -151,12 +152,45 @@ class AIHandler:
             2. Answer the prompt first, then add flavor."""
             
             # 4. Generate Response
-            response = self.model.generate_content(prompt)
-            response_text = response.text.strip()
+            response = await asyncio.to_thread(self.model.generate_content, prompt)
             
+            # SAFE RESPONSE HANDLING:
+            # Gemini sometimes returns blocked content or multi-part content that .text cannot handle directly.
+            try:
+                # 1. Check if we have a valid candidate
+                if not response.candidates:
+                    logger.warning("AI returned no candidates (Safety block?).")
+                    return "⚠️ **Cave Johnson:** [Safety Protocols Activated] I can't say that. The lawyers are watching."
+                
+                # 2. Check safety ratings of the first candidate
+                candidate = response.candidates[0]
+                if candidate.finish_reason != 1: # 1 = STOP (Normal)
+                     # 3 = SAFETY, 4 = RECITATION
+                     logger.warning(f"AI Response blocked. Reason: {candidate.finish_reason}")
+                     
+                     # Try to access text anyway for safety blocks (sometimes it works), otherwise fallback
+                
+                # 3. Robust Text Extraction
+                if hasattr(response, 'text'):
+                     response_text = response.text.strip()
+                elif candidate.content.parts:
+                     response_text = " ".join([part.text for part in candidate.content.parts]).strip()
+                else:
+                     response_text = "⚠️ **Cave Johnson:** [Data Corruption] The lab boys messed up the transmission."
+
+            except ValueError:
+                # This catches the "The `response.text` quick accessor only works..." error
+                # If we get here, it's definitely a multi-part message that .text failed on.
+                try:
+                    parts = response.candidates[0].content.parts
+                    response_text = "".join([p.text for p in parts]).strip()
+                except Exception as e:
+                    logger.error(f"Failed to parse complex AI response: {e}")
+                    response_text = "⚠️ **Cave Johnson:** [System Error] Aperture Science requires you to try that again."
+
             # 5. Save to DB (User message AND Bot response)
-            self.db.add_ai_message(user_id, "user", message)
-            self.db.add_ai_message(user_id, "model", response_text)
+            self.db.add_ai_message(user_id, guild_id, "user", message)
+            self.db.add_ai_message(user_id, guild_id, "model", response_text)
             
             return response_text
             
@@ -191,7 +225,7 @@ class AIHandler:
             }
             
             prompt = roast_prompts.get(character, f"Roast {target_name} in a funny way, under 150 characters:")
-            response = self.model.generate_content(prompt)
+            response = await asyncio.to_thread(self.model.generate_content, prompt)
             return response.text.strip()
             
         except Exception as e:
@@ -225,7 +259,7 @@ class AIHandler:
             }
             
             prompt = compliment_prompts.get(character, f"Compliment {target_name} in a nice way, under 150 characters:")
-            response = self.model.generate_content(prompt)
+            response = await asyncio.to_thread(self.model.generate_content, prompt)
             return response.text.strip()
             
         except Exception as e:
@@ -244,7 +278,7 @@ class AIHandler:
             else:
                 prompt = f"{system_prompt}\n\nThe user wants a beer recommendation. Give them a recommendation in character as Cave Johnson. Perhaps relate it to testing or science."
             
-            response = self.model.generate_content(prompt)
+            response = await asyncio.to_thread(self.model.generate_content, prompt)
             return response.text.strip()
             
         except Exception as e:
@@ -282,7 +316,7 @@ class AIHandler:
             
             prompt = f"{system_instruction}\n\nInput: \"{user_prompt}\"\nOutput:"
             
-            response = self.model.generate_content(prompt)
+            response = await asyncio.to_thread(self.model.generate_content, prompt)
             result = response.text.strip()
             
             # Remove quotes if Gemini adds them

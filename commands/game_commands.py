@@ -174,7 +174,7 @@ class GameCommands(commands.Cog):
         game = next((g for g in library if g['title'] == title_search), None)
         
         if game:
-            await asyncio.to_thread(self.db.rate_game, game['id'], interaction.user.id, score)
+            await asyncio.to_thread(self.db.rate_game, game['id'], interaction.user.id, interaction.guild.id, score)
             await interaction.followup.send(
                 f"🎙️ **Cave Johnson here.** Rating logged for **{title_search}**. "
                 f"You gave it a **{score}/10**. Your opinion has been noted and likely discarded by a computer. "
@@ -216,6 +216,7 @@ class GameCommands(commands.Cog):
         # Async DB Call
         games = await asyncio.to_thread(
             self.db.get_game_library,
+            guild_id=interaction.guild.id,
             status_filter=status_val,
             tag_filter=tag_search,
             player_count=players,
