@@ -32,12 +32,14 @@ FFMPEG_OPTIONS = {
 class MusicCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.queue = []      # List of (url, title) tuples
-        self.current = None  # Currently playing track info
+        # State now keyed by Voice Channel ID (int)
+        self.queues = {}          # {channel_id: [(url, title)]}
+        self.current_tracks = {}  # {channel_id: (url, title)}
+        self.histories = {}       # {channel_id: [(url, title)]}
+        self.notification_channels = {} # {channel_id: text_channel}
+        
         self.volume = 0.5    # Default volume
-        self.history = []    # History of played tracks (url, title)
-        self.tts_enabled = False # Default to OFF (Safety first)
-        self.music_channel = None # We need to remember where to speak
+        self.tts_settings = {} # {guild_id: bool} (TTS preference per server)
         
     async def cog_load(self):
         """Check for FFmpeg availability on load"""
@@ -55,9 +57,10 @@ class MusicCommands(commands.Cog):
 
     def cog_unload(self):
         """Cleanup when cog is unloaded (or bot shuts down)"""
-        self.queue = []
-        self.history = []
-        self.current = None
+        self.queues = {}
+        self.histories = {}
+        self.current_tracks = {}
+        self.notification_channels = {}
         
         # Disconnect from all voice channels
         for vc in self.bot.voice_clients:
@@ -83,22 +86,38 @@ class MusicCommands(commands.Cog):
         if self.bot.is_closed():
             return
 
-        if self.queue:
+        # Dynamically determine which channel we are servicing
+        # The bot can be in multiple guilds, so we need to find the voice_client context
+        # Since this method is passed 'interaction', we can trust interaction.guild
+        if not interaction.guild:
+            return
+            
+        voice_client = interaction.guild.voice_client
+        if not voice_client or not voice_client.channel:
+            return
+
+        channel_id = voice_client.channel.id
+        
+        # Ensure we have state lists for this channel
+        if channel_id not in self.queues: self.queues[channel_id] = []
+        if channel_id not in self.histories: self.histories[channel_id] = []
+        
+        queue = self.queues[channel_id]
+        history = self.histories[channel_id]
+        
+        if queue:
             # Save previous track to history if it finished naturally
-            if self.current:
-                self.history.append(self.current)
+            current = self.current_tracks.get(channel_id)
+            if current:
+                history.append(current)
                 # Keep history limited to last 20 songs to save memory
-                if len(self.history) > 20: 
-                    self.history.pop(0)
+                if len(history) > 20: 
+                    history.pop(0)
 
             # Pop the next song
-            url, title = self.queue.pop(0)
-            self.current = (url, title)
+            url, title = queue.pop(0)
+            self.current_tracks[channel_id] = (url, title)
             
-            voice_client = interaction.guild.voice_client
-            if not voice_client:
-                return
-
             try:
                 # 1. Get Stream URL (JIT)
                 loop = self.bot.loop or asyncio.get_event_loop()
@@ -111,7 +130,7 @@ class MusicCommands(commands.Cog):
                 
                 # 2. Update Facility Status (Local Voice Channel)
                 # Local Channel Status
-                vc_channel = interaction.guild.voice_client.channel
+                vc_channel = voice_client.channel
                 
                 # Check for permissions first so we don't crash if we can't edit
                 if vc_channel.permissions_for(interaction.guild.me).manage_channels:
@@ -139,7 +158,7 @@ class MusicCommands(commands.Cog):
                     voice_client.play(song_source, after=after_song_ends)
 
                 # Define Step 1: TTS Announcement (Optional)
-                if self.tts_enabled:
+                if self.tts_settings.get(interaction.guild.id, False):
                     # Clean title: "Song Name (Official Video)" -> "Song Name"
                     clean_title = title.split('(')[0].split('[')[0]
                     announcement_text = f"Now playing: {clean_title}"
@@ -164,16 +183,19 @@ class MusicCommands(commands.Cog):
 
             except Exception as e:
                 logger.error(f"Failed to play {title}: {e}")
-                self.current = None
+                self.current_tracks[channel_id] = None
                 await self.play_next(interaction)
         else:
-            self.current = None
+            self.current_tracks[channel_id] = None
             await self.bot.change_presence(activity=discord.Game(name="Science | /help"))
 
     @app_commands.command(name="play-tts", description="Toggle the vocal announcement system")
     async def toggle_tts(self, interaction: discord.Interaction):
-        self.tts_enabled = not self.tts_enabled
-        state = "ONLINE" if self.tts_enabled else "OFFLINE"
+        guild_id = interaction.guild.id
+        current_setting = self.tts_settings.get(guild_id, False)
+        self.tts_settings[guild_id] = not current_setting
+        
+        state = "ONLINE" if self.tts_settings[guild_id] else "OFFLINE"
         await interaction.response.send_message(f"🎙️ **Facility Announcer {state}.**")
 
     @app_commands.command(name="play", description="Play audio from YouTube (Search or Link)")
@@ -188,8 +210,29 @@ class MusicCommands(commands.Cog):
         """Robust YouTube Player"""
         await interaction.response.defer()
         
-        # --- SAVE THE CHANNEL ---
-        self.music_channel = interaction.channel
+        # 1. Voice Channel Check
+        if not interaction.user.voice:
+            await interaction.followup.send("🎙️ **Cave here.** You need to be in a voice channel. I can't pipe audio directly into your brain... yet.")
+            return
+
+        # Determine Target Channel (Where the USER is)
+        target_channel = interaction.user.voice.channel
+        target_channel_id = target_channel.id
+        
+        # Determine Current Bot Status
+        vc = interaction.guild.voice_client
+        
+        # --- NEW: Context Switching Logic ---
+        # If bot is connected to a DIFFERENT channel, we switch context
+        if vc and vc.channel.id != target_channel_id:
+             await vc.move_to(target_channel)
+             # Update vc reference
+             vc = interaction.guild.voice_client
+        elif not vc:
+            vc = await target_channel.connect()
+
+        # Update Notification Channel for this voice channel
+        self.notification_channels[target_channel_id] = interaction.channel
 
         # 0. Input Validation
         if not query and not url:
@@ -200,7 +243,6 @@ class MusicCommands(commands.Cog):
         is_direct_link = True if url else False
         
         # FIX: If using 'query' and it's not a link, force ytsearch: prefix
-        # This prevents yt-dlp from thinking "re:..." is a URL scheme
         if not is_direct_link:
             if not target.startswith(('http://', 'https://')):
                  # NEW: Custom Playlist Search Logic
@@ -211,16 +253,7 @@ class MusicCommands(commands.Cog):
                      target = f"https://www.youtube.com/results?search_query={encoded_query}&sp=EgIQAw%253D%253D"
                  else:
                      target = f"ytsearch:{target}"
-
-        # 1. Voice Channel Check
-        if not interaction.user.voice:
-            await interaction.followup.send("🎙️ **Cave here.** You need to be in a voice channel. I can't pipe audio directly into your brain... yet.")
-            return
-
-        vc = interaction.guild.voice_client
-        if not vc:
-            vc = await interaction.user.voice.channel.connect()
-
+        
         # 2. Search / Extraction
         if is_direct_link:
             msg = await interaction.followup.send(f"**Loading Link:** `{target}`...")
@@ -267,7 +300,6 @@ class MusicCommands(commands.Cog):
                     await msg.edit(content=f"📝 **Playlist Queued:** Added {len(added_songs)} tracks from *{info['title']}*.")
                 else:
                     # It is a Search Result (take the first one)
-                    # Note: If playlist_only, we shouldn't get here because we re-extracted above
                     entry = info['entries'][0]
                     added_songs.append((entry['url'], entry['title']))
                     if is_direct_link:
@@ -279,30 +311,35 @@ class MusicCommands(commands.Cog):
                 added_songs.append((info['url'], info['title']))
                 await msg.edit(content=f"🎵 **Added:** {info['title']}")
 
-            # 4. Add to Queue (Normal or Play Now)
+            # 4. Add to Queue (Channel Specific)
             if not added_songs:
                  await msg.edit(content="❌ **Error:** No playable tracks found.")
                  return
 
+            # Ensure queue exists
+            if target_channel_id not in self.queues: self.queues[target_channel_id] = []
+            queue = self.queues[target_channel_id]
+
             if force_play:
                  # Interrupt Priority: [NewSong, CurrentSong, RestOfQueue...]
-                self.queue[0:0] = added_songs # Prepend new songs
+                queue[0:0] = added_songs # Prepend new songs
                 
-                if vc.is_playing() and self.current:
+                current_track_info = self.current_tracks.get(target_channel_id)
+
+                if vc.is_playing() and current_track_info:
                     # If playing, we need to save the current song right after the new one
-                    # self.current is (url, title) tuple now
-                    self.queue.insert(len(added_songs), self.current)
+                    queue.insert(len(added_songs), current_track_info)
                     
                     # Stopping triggers 'after_playing' -> play_next() -> pops index 0 (NewSong)
                     vc.stop()
                     await msg.edit(content=f"🚨 **Interrupted!** Playing {added_songs[0][1]} immediately.")
                 else:
-                    # If idle, just start playing
+                    # If idle, just start playing (assuming we are in the right channel)
                     if not vc.is_playing():
                         await self.play_next(interaction)
             else:
                 # Normal Queue
-                self.queue.extend(added_songs)
+                queue.extend(added_songs)
 
                 # 5. Start Playback if Idle
                 if not vc.is_playing():
@@ -316,35 +353,30 @@ class MusicCommands(commands.Cog):
     async def previous(self, interaction: discord.Interaction):
         """Go back to the previous song"""
         vc = interaction.guild.voice_client
-        if not vc:
+        if not vc or not vc.channel:
              await interaction.response.send_message("I'm not connected.", ephemeral=True)
              return
 
-        if not self.history:
+        channel_id = vc.channel.id
+        history = self.histories.get(channel_id, [])
+        queue = self.queues.get(channel_id, [])
+
+        if not history:
              await interaction.response.send_message("❌ **No history.** We can only move forward, not backward.", ephemeral=True)
              return
 
         # Get last song
-        last_track = self.history.pop()
+        last_track = history.pop()
         
-        # If something is currently playing, put it back at the start of queue (so 'Skip' goes back to it)
-        # OR should we put it back in history? 
-        # Let's put it in queue pos 0 so it's "next" again.
-        if self.current:
-             self.queue.insert(0, self.current)
+        # If something is currently playing, put it back at the start of queue
+        current = self.current_tracks.get(channel_id)
+        if current:
+             queue.insert(0, current)
         
         # Put the previous track at SUPER priority (index 0)
-        self.queue.insert(0, last_track)
+        queue.insert(0, last_track)
         
-        # Stop current track to trigger play_next() which will pick up the previous track we just pushed
-        # Note: play_next normally saves current to history.
-        # We don't want to duplicate the "current" song into history if we just manually moved it to queue.
-        # So we clear current before stopping?
-        # Actually play_next saves "if self.current".
-        # If we set self.current = None here, play_next won't save it.
-        # But we ALREADY pushed it to queue. So that's correct.
-        
-        self.current = None 
+        self.current_tracks[channel_id] = None 
         vc.stop()
         
         title = last_track[1]
@@ -361,19 +393,32 @@ class MusicCommands(commands.Cog):
 
     @app_commands.command(name="queue", description="View the upcoming audio tests")
     async def view_queue(self, interaction: discord.Interaction):
-        if not self.queue and not self.current:
+        # View queue for the channel the user is in, OR the bot is in
+        target_channel_id = None
+        if interaction.user.voice:
+            target_channel_id = interaction.user.voice.channel.id
+        elif interaction.guild.voice_client:
+            target_channel_id = interaction.guild.voice_client.channel.id
+            
+        if not target_channel_id:
+             await interaction.response.send_message("No active audio session found.", ephemeral=True)
+             return
+
+        queue = self.queues.get(target_channel_id, [])
+        current = self.current_tracks.get(target_channel_id)
+
+        if not queue and not current:
             await interaction.response.send_message("The queue is empty. Silence is inefficient.")
             return
 
-        # Handle tuple vs string (compatibility)
-        current_title = self.current[1] if isinstance(self.current, tuple) else str(self.current)
+        current_title = current[1] if current else "Nothing"
         
         desc = f"**Now Playing:** {current_title}\n\n**Up Next:**\n"
-        for i, (url, title) in enumerate(self.queue[:10], 1):
+        for i, (url, title) in enumerate(queue[:10], 1):
             desc += f"`{i}.` {title}\n"
         
-        if len(self.queue) > 10:
-            desc += f"*...and {len(self.queue)-10} more.*"
+        if len(queue) > 10:
+            desc += f"*...and {len(queue)-10} more.*"
 
         embed = discord.Embed(title="🎧 Audio Testing Queue", description=desc, color=0xFFA500)
         await interaction.response.send_message(embed=embed)
@@ -384,13 +429,17 @@ class MusicCommands(commands.Cog):
         if vc:
             # --- NEW CLEANUP LOGIC ---
             channel = vc.channel
+            channel_id = channel.id
             if channel.permissions_for(interaction.guild.me).manage_channels:
                  # Setting status to None removes it
                  await channel.edit(status=None) 
             # -------------------------
-
-            self.queue = []
-            self.current = None
+            
+            # Clear state for this channel
+            if channel_id in self.queues: self.queues[channel_id] = []
+            if channel_id in self.current_tracks: self.current_tracks[channel_id] = None
+            # History? Lets keep history for now.
+             
             vc.stop()
             await vc.disconnect()
             
