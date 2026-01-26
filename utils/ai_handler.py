@@ -5,13 +5,15 @@ import google.generativeai as genai
 import logging
 from typing import Optional, Dict, List, Tuple
 from config import BotConfig
+import asyncio
 
 logger = logging.getLogger(__name__)
 
 class AIHandler:
-    def __init__(self, db_handler):
+    def __init__(self, db_handler, bot=None):
         self.config = BotConfig()
         self.db = db_handler
+        self.bot = bot
         self.model = self._setup_ai()
     
     def _setup_ai(self):
@@ -20,7 +22,7 @@ class AIHandler:
         if api_key:
             try:
                 genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-3-flash-preview')
+                model = genai.GenerativeModel('gemini-2.5-flash')
                 logger.info("AI model initialized successfully")
                 return model
             except Exception as e:
@@ -61,20 +63,21 @@ class AIHandler:
         
         try:
             prompt = f"{self.config.CHARACTER_PROMPTS[character]}\n\nUser said: '{user_input}'\n\nRespond in character:"
-            response = self.model.generate_content(prompt)
+            response = await asyncio.to_thread(self.model.generate_content, prompt)
             return response.text.strip()
         except Exception as e:
             logger.error(f"AI character response error for {character}: {e}")
             return None
     
-    async def get_chat_response(self, user_id: int, message: str, guild_id: int = None) -> Optional[str]:
+    async def get_chat_response(self, user_id: int, message: str, guild_id: int = None, reply_context: str = None) -> Optional[str]:
         """Get AI response for general chat with persistent database memory and context awareness"""
         if not self.is_available():
             return None
         
         try:
             # 1. Get recent context from DB
-            history = self.db.get_ai_history(user_id, limit=20) # Get last 20 messages
+            # Use Global Context (pass None for guild_id) so Cave remembers you everywhere
+            history = self.db.get_ai_history(user_id, None, limit=20)
             
             # 2. Build context string
             context = ""
@@ -85,6 +88,10 @@ class AIHandler:
                 context += "\n"
             else:
                 context = "Previous conversation history: None\n"
+            
+            # --- REPLY CONTEXT ---
+            if reply_context:
+                context += f"\n[SYSTEM NOTICE]: The user is replying to a specific message:\n{reply_context}\n"
             
             # Server Awareness
             location_data = BotConfig.SERVER_CONTEXTS.get(
@@ -136,13 +143,27 @@ class AIHandler:
                 recommendations = self.db.recommend_games(min_players=min_players, tag=tag)
                 database_context = f"\n{recommendations}\n"
             
+            # Context: Music Status
+            music_context = ""
+            if self.bot:
+                music_cog = self.bot.get_cog("MusicCommands")
+                if music_cog and music_cog.current:
+                    # music_cog.current is (url, title) tuple
+                    try:
+                        title = music_cog.current[1]
+                        music_context = f"CURRENTLY PLAYING MUSIC: '{title}'. If the user asks about the music, refer to this."
+                    except Exception as e:
+                        logger.error(f"Error fetching music context: {e}")
+            
             # 3. Create prompt
             system_prompt = self._get_persona_system_prompt()
             
             prompt = f"""{system_prompt}
             
             {location_data}
+            {location_data}
             {database_context}
+            {music_context}
             
             {context}User: "{message}"
             
@@ -151,12 +172,45 @@ class AIHandler:
             2. Answer the prompt first, then add flavor."""
             
             # 4. Generate Response
-            response = self.model.generate_content(prompt)
-            response_text = response.text.strip()
+            response = await asyncio.to_thread(self.model.generate_content, prompt)
             
+            # SAFE RESPONSE HANDLING:
+            # Gemini sometimes returns blocked content or multi-part content that .text cannot handle directly.
+            try:
+                # 1. Check if we have a valid candidate
+                if not response.candidates:
+                    logger.warning("AI returned no candidates (Safety block?).")
+                    return "⚠️ **Cave Johnson:** [Safety Protocols Activated] I can't say that. The lawyers are watching."
+                
+                # 2. Check safety ratings of the first candidate
+                candidate = response.candidates[0]
+                if candidate.finish_reason != 1: # 1 = STOP (Normal)
+                     # 3 = SAFETY, 4 = RECITATION
+                     logger.warning(f"AI Response blocked. Reason: {candidate.finish_reason}")
+                     
+                     # Try to access text anyway for safety blocks (sometimes it works), otherwise fallback
+                
+                # 3. Robust Text Extraction
+                if hasattr(response, 'text'):
+                     response_text = response.text.strip()
+                elif candidate.content.parts:
+                     response_text = " ".join([part.text for part in candidate.content.parts]).strip()
+                else:
+                     response_text = "⚠️ **Cave Johnson:** [Data Corruption] The lab boys messed up the transmission."
+
+            except ValueError:
+                # This catches the "The `response.text` quick accessor only works..." error
+                # If we get here, it's definitely a multi-part message that .text failed on.
+                try:
+                    parts = response.candidates[0].content.parts
+                    response_text = "".join([p.text for p in parts]).strip()
+                except Exception as e:
+                    logger.error(f"Failed to parse complex AI response: {e}")
+                    response_text = "⚠️ **Cave Johnson:** [System Error] Aperture Science requires you to try that again."
+
             # 5. Save to DB (User message AND Bot response)
-            self.db.add_ai_message(user_id, "user", message)
-            self.db.add_ai_message(user_id, "model", response_text)
+            self.db.add_ai_message(user_id, guild_id, "user", message)
+            self.db.add_ai_message(user_id, guild_id, "model", response_text)
             
             return response_text
             
@@ -164,7 +218,7 @@ class AIHandler:
             logger.error(f"AI chat response error: {e}")
             return None
     
-    async def get_roast_response(self, character: str, target_name: str) -> Optional[str]:
+    async def get_roast_response(self, character: str, target_name: str, chat_history: List[Tuple[str, str]] = None) -> Optional[str]:
         """Generate a character-based roast"""
         if not self.is_available() or character not in self.config.CHARACTER_PROMPTS:
             return None
@@ -190,15 +244,32 @@ class AIHandler:
                 'dante': f"{self.config.CHARACTER_PROMPTS['dante']}\n\nRoast this Discord user named '{target_name}' by assigning them to an appropriate circle of hell for their sins. Keep it poetic and under 150 characters:"
             }
             
-            prompt = roast_prompts.get(character, f"Roast {target_name} in a funny way, under 150 characters:")
-            response = self.model.generate_content(prompt)
+            # Build history string if available
+            history_text = ""
+            if chat_history:
+                # Filter to only show what the USER said (role='user') to give material for the roast
+                user_msgs = [f"- {content}" for role, content in chat_history if role == 'user']
+                if user_msgs:
+                    # Take last 10 messages max
+                    evidence = "\n".join(user_msgs[:10])
+                    history_text = f"\n\nHere is a log of recent things {target_name} has said (use this to hurt them):\n{evidence}\n"
+
+            base_prompt = roast_prompts.get(character, f"Roast {target_name} in a funny way, under 150 characters:")
+            
+            # Inject history if available
+            if history_text:
+                prompt = f"{history_text}\n{base_prompt}"
+            else:
+                prompt = base_prompt
+
+            response = await asyncio.to_thread(self.model.generate_content, prompt)
             return response.text.strip()
             
         except Exception as e:
             logger.error(f"AI roast error for {character}: {e}")
             return None
     
-    async def get_compliment_response(self, character: str, target_name: str) -> Optional[str]:
+    async def get_compliment_response(self, character: str, target_name: str, chat_history: List[Tuple[str, str]] = None) -> Optional[str]:
         """Generate a character-based compliment"""
         if not self.is_available() or character not in self.config.CHARACTER_PROMPTS:
             return None
@@ -224,8 +295,24 @@ class AIHandler:
                 'dante': f"{self.config.CHARACTER_PROMPTS['dante']}\n\nCompliment '{target_name}' by suggesting they have the potential for redemption and paradise. Under 150 characters:"
             }
             
-            prompt = compliment_prompts.get(character, f"Compliment {target_name} in a nice way, under 150 characters:")
-            response = self.model.generate_content(prompt)
+            # Build history string if available
+            history_text = ""
+            if chat_history:
+                 # Filter to only show what the USER said
+                user_msgs = [f"- {content}" for role, content in chat_history if role == 'user']
+                if user_msgs:
+                    evidence = "\n".join(user_msgs[:10])
+                    history_text = f"\n\nHere is a log of recent things {target_name} has said:\n{evidence}\n"
+
+            base_prompt = compliment_prompts.get(character, f"Compliment {target_name} in a nice way, under 150 characters:")
+            
+             # Inject history if available
+            if history_text:
+                prompt = f"{history_text}\n{base_prompt}"
+            else:
+                prompt = base_prompt
+
+            response = await asyncio.to_thread(self.model.generate_content, prompt)
             return response.text.strip()
             
         except Exception as e:
@@ -244,7 +331,7 @@ class AIHandler:
             else:
                 prompt = f"{system_prompt}\n\nThe user wants a beer recommendation. Give them a recommendation in character as Cave Johnson. Perhaps relate it to testing or science."
             
-            response = self.model.generate_content(prompt)
+            response = await asyncio.to_thread(self.model.generate_content, prompt)
             return response.text.strip()
             
         except Exception as e:
@@ -282,7 +369,7 @@ class AIHandler:
             
             prompt = f"{system_instruction}\n\nInput: \"{user_prompt}\"\nOutput:"
             
-            response = self.model.generate_content(prompt)
+            response = await asyncio.to_thread(self.model.generate_content, prompt)
             result = response.text.strip()
             
             # Remove quotes if Gemini adds them
