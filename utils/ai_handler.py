@@ -76,7 +76,8 @@ class AIHandler:
         
         try:
             # 1. Get recent context from DB
-            history = self.db.get_ai_history(user_id, guild_id, limit=20) # Get last 20 messages
+            # Use Global Context (pass None for guild_id) so Cave remembers you everywhere
+            history = self.db.get_ai_history(user_id, None, limit=20)
             
             # 2. Build context string
             context = ""
