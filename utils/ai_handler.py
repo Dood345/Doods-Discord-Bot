@@ -10,9 +10,10 @@ import asyncio
 logger = logging.getLogger(__name__)
 
 class AIHandler:
-    def __init__(self, db_handler):
+    def __init__(self, db_handler, bot=None):
         self.config = BotConfig()
         self.db = db_handler
+        self.bot = bot
         self.model = self._setup_ai()
     
     def _setup_ai(self):
@@ -137,13 +138,27 @@ class AIHandler:
                 recommendations = self.db.recommend_games(min_players=min_players, tag=tag)
                 database_context = f"\n{recommendations}\n"
             
+            # Context: Music Status
+            music_context = ""
+            if self.bot:
+                music_cog = self.bot.get_cog("MusicCommands")
+                if music_cog and music_cog.current:
+                    # music_cog.current is (url, title) tuple
+                    try:
+                        title = music_cog.current[1]
+                        music_context = f"CURRENTLY PLAYING MUSIC: '{title}'. If the user asks about the music, refer to this."
+                    except Exception as e:
+                        logger.error(f"Error fetching music context: {e}")
+            
             # 3. Create prompt
             system_prompt = self._get_persona_system_prompt()
             
             prompt = f"""{system_prompt}
             
             {location_data}
+            {location_data}
             {database_context}
+            {music_context}
             
             {context}User: "{message}"
             

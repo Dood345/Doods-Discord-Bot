@@ -65,7 +65,7 @@ class DoodsBot(commands.Bot):
         # Initialize Database
         self.db = DatabaseHandler()
         
-        self.ai_handler = AIHandler(self.db)
+        self.ai_handler = AIHandler(self.db, self)
         self.reaction_handler = ReactionHandler()
         
         # User conversation histories for AI
