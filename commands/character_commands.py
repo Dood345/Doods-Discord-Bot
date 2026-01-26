@@ -131,30 +131,7 @@ class CharacterCommands(commands.Cog):
         else:
             await interaction.response.send_message("🤖 **T-800:** I need your clothes, your boots, and your motorcycle.")
     
-    # GENERAL AI CHAT
-    @app_commands.command(name='ai', description="Ask the AI anything with conversation memory")
-    async def ai_chat(self, interaction: discord.Interaction, question: str):
-        if not self.ai_handler.is_available():
-            await interaction.response.send_message("🤖 AI is not configured. Add your GEMINI_API_KEY to .env file!", ephemeral=True)
-            return
-        
-        await interaction.response.defer()
-        try:
-            # Now passing the location data
-            response = await self.ai_handler.get_chat_response(interaction.user.id, question, guild_id=interaction.guild_id)
-            if response:
-                await interaction.followup.send(f"🤖 **AI:** {response}")
-            else:
-                await interaction.followup.send("🤖 Sorry, I'm having trouble processing that right now. Try again later!")
-                
-        except Exception as e:
-            logger.error(f"AI chat error: {e}")
-            await interaction.followup.send("🤖 Something went wrong! Try again later.")
-    
-    @app_commands.command(name='clearhistory', description="Clear your AI conversation history")
-    async def clear_history(self, interaction: discord.Interaction):
-        self.ai_handler.clear_user_history(interaction.user.id)
-        await interaction.response.send_message("🤖 Your conversation history has been cleared!", ephemeral=True)
+
 
 async def setup(bot):
     await bot.add_cog(CharacterCommands(bot))

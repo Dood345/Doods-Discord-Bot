@@ -41,7 +41,10 @@ class SocialCommands(commands.Cog):
         
         # Try AI first
         if self.ai_handler.is_available():
-            ai_response = await self.ai_handler.get_roast_response(character, member.display_name)
+            # fetch history for context
+            history = self.bot.db.get_ai_history(member.id, interaction.guild.id if interaction.guild else None, limit=15)
+            
+            ai_response = await self.ai_handler.get_roast_response(character, member.display_name, chat_history=history)
             if ai_response:
                 await interaction.followup.send(f"{member.mention} {char_info['name']}: {ai_response}")
                 return
@@ -128,7 +131,10 @@ class SocialCommands(commands.Cog):
         
         # Try AI first
         if self.ai_handler.is_available():
-            ai_response = await self.ai_handler.get_compliment_response(character, member.display_name)
+            # fetch history for context
+            history = self.bot.db.get_ai_history(member.id, interaction.guild.id if interaction.guild else None, limit=15)
+
+            ai_response = await self.ai_handler.get_compliment_response(character, member.display_name, chat_history=history)
             if ai_response:
                 await interaction.followup.send(f"{char_info['name']}: {ai_response}")
                 return
