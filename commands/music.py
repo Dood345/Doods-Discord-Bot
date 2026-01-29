@@ -271,23 +271,8 @@ class MusicCommands(commands.Cog):
         # Determine Target Channel (Where the USER is)
         target_channel = interaction.user.voice.channel
         target_channel_id = target_channel.id
-        
-        # Determine Current Bot Status
-        vc = interaction.guild.voice_client
-        
-        # --- Context Switching Logic ---
-        # If bot is connected to a DIFFERENT channel, we switch context
-        if vc and vc.channel.id != target_channel_id:
-             if vc.is_playing():
-                 vc.stop() # Stop playback from the old channel
-             await vc.move_to(target_channel)
-             # Update vc reference
-             vc = interaction.guild.voice_client
-        elif not vc:
-            vc = await target_channel.connect()
-
-        # Update Notification Channel for this voice channel
-        self.notification_channels[target_channel_id] = interaction.channel
+        # --- SAVE THE CHANNEL ---
+        self.music_channel = interaction.channel
 
         # 0. Input Validation
         if not query and not url:
@@ -298,6 +283,7 @@ class MusicCommands(commands.Cog):
         is_direct_link = True if url else False
         
         # FIX: If using 'query' and it's not a link, force ytsearch: prefix
+        # This prevents yt-dlp from thinking "re:..." is a URL scheme
         if not is_direct_link:
             if not target.startswith(('http://', 'https://')):
                  # NEW: Custom Playlist Search Logic
@@ -308,12 +294,26 @@ class MusicCommands(commands.Cog):
                      target = f"https://www.youtube.com/results?search_query={encoded_query}&sp=EgIQAw%253D%253D"
                  else:
                      target = f"ytsearch:{target}"
+
+        # 1. Voice Channel Check
+        if not interaction.user.voice:
+            await interaction.followup.send("🎙️ **Cave here.** You need to be in a voice channel. I can't pipe audio directly into your brain... yet.")
+            return
+
+        vc = interaction.guild.voice_client
+        if not vc:
+            vc = await interaction.user.voice.channel.connect()
+
+        # Update Notification Channel for this voice channel
+        self.notification_channels[vc.channel.id] = interaction.channel
         
         # 2. Search / Extraction
         if is_direct_link:
             msg = await interaction.followup.send(f"**Loading Link:** `{target}`...")
         elif playlist_only:
              msg = await interaction.followup.send(f"🔍 **Searching for Playlist:** `{query}`...")
+        elif radio:
+             msg = await interaction.followup.send(f"📻 **Tuning Radio:** `{query}`...")
         else:
             msg = await interaction.followup.send(f"🔍 **Searching:** `{target}`...")
         
@@ -344,17 +344,48 @@ class MusicCommands(commands.Cog):
                          info = ydl.extract_info(playlist_url, download=False)
                     
                     # Update info to be the playlist info now
-                    
+            
+            # NEW: Radio / Mix Logic
+            if radio:
+                video_id = None
+                
+                # Check directly if we have an ID (direct link)
+                if info.get('id'):
+                    video_id = info['id']
+                # Or check entries (search result)
+                elif 'entries' in info:
+                     entries = list(info['entries'])
+                     if entries:
+                         video_id = entries[0].get('id')
+                
+                if video_id:
+                     # Construct Mix URL
+                     mix_url = f"https://www.youtube.com/watch?v={video_id}&list=RD{video_id}"
+                     
+                     # Extract Mix
+                     with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+                         info = ydl.extract_info(mix_url, download=False)
+                         await msg.edit(content=f"📻 **Radio Station Found:** *{info.get('title', 'Mix')}*")
+                else:
+                     await msg.edit(content="❌ **Radio Error:** Could not identify a seed video for the radio.")
+                     return
+
             if 'entries' in info:
                 # It's a Playlist or a Search Result
                 if info.get('_type') == 'playlist':
-                    # It is an ACTUAL playlist (either direct link OR our found playlist)
+                    # It is an ACTUAL playlist (either direct link OR our found playlist OR our Radio Mix)
                     for entry in info['entries']:
                          if entry: # sometimes entries can be None
                             added_songs.append((entry['url'], entry['title']))
-                    await msg.edit(content=f"📝 **Playlist Queued:** Added {len(added_songs)} tracks from *{info['title']}*.")
+                    
+                    queue_len = len(added_songs)
+                    if radio:
+                        await msg.edit(content=f"📻 **Radio Tuned:** Queued {queue_len} tracks based on *{query if query else 'Link'}*.")
+                    else:
+                        await msg.edit(content=f"📝 **Playlist Queued:** Added {queue_len} tracks from *{info['title']}*.")
                 else:
                     # It is a Search Result (take the first one)
+                    # Note: If playlist_only/radio, we shouldn't get here because we re-extracted
                     entry = info['entries'][0]
                     added_songs.append((entry['url'], entry['title']))
                     if is_direct_link:
