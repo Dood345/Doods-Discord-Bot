@@ -256,8 +256,7 @@ class MusicCommands(commands.Cog):
         query="Search term (e.g. 'lofi hip hop')", 
         url="Direct YouTube Link", 
         force_play="Play immediately (interrupt current)",
-        playlist_only="Search specifically for playlists (Default: False)",
-        radio="Play a YouTube Mix based on the search term"
+        playlist_only="Search specifically for playlists (Default: False)"
     )
     @app_commands.rename(force_play="force-play", playlist_only="playlist-only")
     async def play(self, interaction: discord.Interaction, query: str = None, url: str = None, force_play: bool = False, playlist_only: bool = False):
@@ -313,8 +312,7 @@ class MusicCommands(commands.Cog):
             msg = await interaction.followup.send(f"**Loading Link:** `{target}`...")
         elif playlist_only:
              msg = await interaction.followup.send(f"🔍 **Searching for Playlist:** `{query}`...")
-        elif radio:
-             msg = await interaction.followup.send(f"📻 **Tuning Radio:** `{query}`...")
+
         else:
             msg = await interaction.followup.send(f"🔍 **Searching:** `{target}`...")
         
@@ -346,30 +344,7 @@ class MusicCommands(commands.Cog):
                     
                     # Update info to be the playlist info now
             
-            # NEW: Radio / Mix Logic
-            if radio:
-                video_id = None
-                
-                # Check directly if we have an ID (direct link)
-                if info.get('id'):
-                    video_id = info['id']
-                # Or check entries (search result)
-                elif 'entries' in info:
-                     entries = list(info['entries'])
-                     if entries:
-                         video_id = entries[0].get('id')
-                
-                if video_id:
-                     # Construct Mix URL
-                     mix_url = f"https://www.youtube.com/watch?v={video_id}&list=RD{video_id}"
-                     
-                     # Extract Mix
-                     with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-                         info = ydl.extract_info(mix_url, download=False)
-                         await msg.edit(content=f"📻 **Radio Station Found:** *{info.get('title', 'Mix')}*")
-                else:
-                     await msg.edit(content="❌ **Radio Error:** Could not identify a seed video for the radio.")
-                     return
+
 
             if 'entries' in info:
                 # It's a Playlist or a Search Result
@@ -380,8 +355,8 @@ class MusicCommands(commands.Cog):
                             added_songs.append((entry['url'], entry['title']))
                     
                     queue_len = len(added_songs)
-                    if radio:
-                        await msg.edit(content=f"📻 **Radio Tuned:** Queued {queue_len} tracks based on *{query if query else 'Link'}*.")
+                    if False:
+                        pass
                     else:
                         await msg.edit(content=f"📝 **Playlist Queued:** Added {queue_len} tracks from *{info['title']}*.")
                 else:
