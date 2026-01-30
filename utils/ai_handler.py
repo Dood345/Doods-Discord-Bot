@@ -1,7 +1,7 @@
 """AI handling utilities for the Discord bot"""
 
 import os
-import google.generativeai as genai
+from google import genai
 import logging
 from typing import Optional, Dict, List, Tuple
 from config import BotConfig
@@ -14,17 +14,17 @@ class AIHandler:
         self.config = BotConfig()
         self.db = db_handler
         self.bot = bot
-        self.model = self._setup_ai()
+        self.model_name = 'gemini-2.5-flash'
+        self.client = self._setup_ai()
     
     def _setup_ai(self):
         """Initialize Gemini AI"""
         api_key = os.getenv('GEMINI_API_KEY')
         if api_key:
             try:
-                genai.configure(api_key=api_key)
-                model = genai.GenerativeModel('gemini-2.5-flash')
-                logger.info("AI model initialized successfully")
-                return model
+                client = genai.Client(api_key=api_key)
+                logger.info("AI client initialized successfully")
+                return client
             except Exception as e:
                 logger.error(f"Failed to initialize AI model: {e}")
                 return None
@@ -54,7 +54,7 @@ class AIHandler:
     
     def is_available(self) -> bool:
         """Check if AI is available"""
-        return self.model is not None
+        return self.client is not None
     
     async def get_character_response(self, character: str, user_input: str) -> Optional[str]:
         """Get AI response for a specific character"""
@@ -63,7 +63,7 @@ class AIHandler:
         
         try:
             prompt = f"{self.config.CHARACTER_PROMPTS[character]}\n\nUser said: '{user_input}'\n\nRespond in character:"
-            response = await asyncio.to_thread(self.model.generate_content, prompt)
+            response = await asyncio.to_thread(self.client.models.generate_content, model=self.model_name, contents=prompt)
             return response.text.strip()
         except Exception as e:
             logger.error(f"AI character response error for {character}: {e}")
@@ -171,7 +171,7 @@ class AIHandler:
             2. Answer the prompt first, then add flavor."""
             
             # 4. Generate Response
-            response = await asyncio.to_thread(self.model.generate_content, prompt)
+            response = await asyncio.to_thread(self.client.models.generate_content, model=self.model_name, contents=prompt)
             
             # SAFE RESPONSE HANDLING:
             # Gemini sometimes returns blocked content or multi-part content that .text cannot handle directly.
@@ -261,7 +261,7 @@ class AIHandler:
             else:
                 prompt = base_prompt
 
-            response = await asyncio.to_thread(self.model.generate_content, prompt)
+            response = await asyncio.to_thread(self.client.models.generate_content, model=self.model_name, contents=prompt)
             return response.text.strip()
             
         except Exception as e:
@@ -311,7 +311,7 @@ class AIHandler:
             else:
                 prompt = base_prompt
 
-            response = await asyncio.to_thread(self.model.generate_content, prompt)
+            response = await asyncio.to_thread(self.client.models.generate_content, model=self.model_name, contents=prompt)
             return response.text.strip()
             
         except Exception as e:
@@ -330,7 +330,7 @@ class AIHandler:
             else:
                 prompt = f"{system_prompt}\n\nThe user wants a beer recommendation. Give them a recommendation in character as Cave Johnson. Perhaps relate it to testing or science."
             
-            response = await asyncio.to_thread(self.model.generate_content, prompt)
+            response = await asyncio.to_thread(self.client.models.generate_content, model=self.model_name, contents=prompt)
             return response.text.strip()
             
         except Exception as e:
@@ -368,7 +368,7 @@ class AIHandler:
             
             prompt = f"{system_instruction}\n\nInput: \"{user_prompt}\"\nOutput:"
             
-            response = await asyncio.to_thread(self.model.generate_content, prompt)
+            response = await asyncio.to_thread(self.client.models.generate_content, model=self.model_name, contents=prompt)
             result = response.text.strip()
             
             # Remove quotes if Gemini adds them
