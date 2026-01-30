@@ -256,7 +256,8 @@ class MusicCommands(commands.Cog):
         query="Search term (e.g. 'lofi hip hop')", 
         url="Direct YouTube Link", 
         force_play="Play immediately (interrupt current)",
-        playlist_only="Search specifically for playlists (Default: False)"
+        playlist_only="Search specifically for playlists (Default: False)",
+        radio="Play a YouTube Mix based on the search term"
     )
     @app_commands.rename(force_play="force-play", playlist_only="playlist-only")
     async def play(self, interaction: discord.Interaction, query: str = None, url: str = None, force_play: bool = False, playlist_only: bool = False):
