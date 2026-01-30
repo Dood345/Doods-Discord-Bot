@@ -271,8 +271,23 @@ class MusicCommands(commands.Cog):
         # Determine Target Channel (Where the USER is)
         target_channel = interaction.user.voice.channel
         target_channel_id = target_channel.id
-        # --- SAVE THE CHANNEL ---
-        self.music_channel = interaction.channel
+
+        # Determine Current Bot Status
+        vc = interaction.guild.voice_client
+        
+        # --- Context Switching Logic ---
+        # If bot is connected to a DIFFERENT channel, we switch context
+        if vc and vc.channel.id != target_channel_id:
+             if vc.is_playing():
+                 vc.stop() # Stop playback from the old channel
+             await vc.move_to(target_channel)
+             # Update vc reference
+             vc = interaction.guild.voice_client
+        elif not vc:
+            vc = await target_channel.connect()
+
+        # Update Notification Channel for this voice channel
+        self.notification_channels[target_channel_id] = interaction.channel
 
         # 0. Input Validation
         if not query and not url:
