@@ -12,3 +12,7 @@ requests
 yt-dlp
 edge-tts
 aiosqlite
+pytest
+pytest-asyncio
+pytest-cov
+pytest-mock
