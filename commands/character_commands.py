@@ -21,9 +21,8 @@ class CharacterCommands(commands.Cog):
             if ai_response:
                 return ai_response
         
-        # Fallback to static quotes
-        quotes = self.config.FALLBACK_QUOTES.get(character, ["*character malfunctioned*"])
-        return random.choice(quotes)
+        # Fallback to static JSON quotes organized by character
+        return self.bot.dialogue.get(character, 'fallback', fallback="*character malfunctioned*")
     
     # KING OF THE HILL CHARACTERS
     @app_commands.command(name='hank', description="Get a Hank Hill response")
@@ -87,13 +86,20 @@ class CharacterCommands(commands.Cog):
                 await interaction.followup.send(f"{char_info['name']}: {ai_response}")
                 return
         
-        # Fallback to static generator
+        # Fallback to static JSON generator
         subjects = ["The globalists", "The deep state", "The new world order", "The interdimensional vampires", "Big Pharma"]
         actions = ["are turning", "have infiltrated", "are controlling", "are putting chemicals in"]
         objects = ["the water supply", "the school lunches", "the 5G towers", "the birds", "our DNA"]
         reasons = ["to make us docile", "to create a one-world government", "to lower our testosterone", "to harvest our life-force", "to turn the frogs gay"]
         
-        theory = f"Folks, listen to me! {random.choice(subjects)} {random.choice(actions)} {random.choice(objects)} {random.choice(reasons)}! It's a war for your mind!"
+        theory = self.bot.dialogue.get(
+            'alexjones', 
+            'conspiracy', 
+            subject=random.choice(subjects), 
+            action=random.choice(actions), 
+            object=random.choice(objects), 
+            reason=random.choice(reasons)
+        )
         await interaction.followup.send(f"🚨 **INFOWARS ALERT:** {theory}")
     
     # NEW CHARACTERS

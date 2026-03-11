@@ -136,9 +136,8 @@ class GameCommands(commands.Cog):
         )
         
         if not games:
-            await interaction.followup.send("🎙️ **Cave Johnson here.** The filing cabinets are empty. "
-                                            "Either we solved all of science, or someone stole the files. "
-                                            "Try loosening your search criteria.")
+            msg = self.bot.dialogue.get('cave_johnson', 'game_list_empty')
+            await interaction.followup.send(msg)
             return
             
         desc = []

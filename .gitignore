@@ -6,7 +6,7 @@ __pycache__/
 .Python
 *.log
 venv
-data/
+data/logs/
 *.mp3
 *.bak
 www.youtube.com_cookies.txt
