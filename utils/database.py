@@ -9,7 +9,8 @@ logger = logging.getLogger(__name__)
 class DatabaseHandler:
     def __init__(self, db_path: str = 'data/doodlab.db'):
         self.db_path = db_path
-        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        if self.db_path != ":memory:":
+            os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
     
     def get_connection(self):
         return aiosqlite.connect(self.db_path)
