@@ -19,13 +19,13 @@ class GameCommands(commands.Cog):
 
     async def game_title_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
         """Autocomplete for game titles"""
-        titles = await asyncio.to_thread(self.db.search_game_titles, current)
+        titles = await self.db.search_game_titles(current)
         return [app_commands.Choice(name=title, value=title) for title in titles]
 
     async def tag_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
         """Autocomplete for tags"""
         # Fetch all tags (cached or fast query)
-        tags = await asyncio.to_thread(self.db.get_tags)
+        tags = await self.db.get_tags()
         
         # Filter locally for now since the list is small (70 tags)
         # In a larger system, you'd want a specific DB search method for tags
@@ -37,7 +37,7 @@ class GameCommands(commands.Cog):
     async def tags_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
         """Autocomplete for multiple comma-separated tags"""
         # Fetch all tags
-        all_tags = await asyncio.to_thread(self.db.get_tags)
+        all_tags = await self.db.get_tags()
         
         # Handle comma-separated input
         if ',' in current:
@@ -105,8 +105,7 @@ class GameCommands(commands.Cog):
         tag_list = [t.strip() for t in tags.split(',')] if tags else []
 
         # Add to database
-        game_id = await asyncio.to_thread(
-            self.db.add_game,
+        game_id = await self.db.add_game(
             title=title, 
             added_by=interaction.user.id, 
             min_players=min_players, 
@@ -160,7 +159,7 @@ class GameCommands(commands.Cog):
         await interaction.response.defer()
         
         # Check if game exists
-        games = await asyncio.to_thread(self.db.search_game_titles, title_search)
+        games = await self.db.search_game_titles(title_search)
         if title_search not in games:
              await interaction.followup.send(
                 f"🎙️ **Cave Johnson here.** Error. Simulation **{title_search}** not found. "
@@ -170,11 +169,11 @@ class GameCommands(commands.Cog):
              return
 
         # Get ID
-        library = await asyncio.to_thread(self.db.get_game_library) 
+        library = await self.db.get_game_library() 
         game = next((g for g in library if g['title'] == title_search), None)
         
         if game:
-            await asyncio.to_thread(self.db.rate_game, game['id'], interaction.user.id, interaction.guild.id, score)
+            await self.db.rate_game(game['id'], interaction.user.id, interaction.guild.id, score)
             await interaction.followup.send(
                 f"🎙️ **Cave Johnson here.** Rating logged for **{title_search}**. "
                 f"You gave it a **{score}/10**. Your opinion has been noted and likely discarded by a computer. "
@@ -214,8 +213,7 @@ class GameCommands(commands.Cog):
         state_val = release_state.value if release_state else None
         
         # Async DB Call
-        games = await asyncio.to_thread(
-            self.db.get_game_library,
+        games = await self.db.get_game_library(
             guild_id=interaction.guild.id,
             status_filter=status_val,
             tag_filter=tag_search,
@@ -342,7 +340,7 @@ class GameCommands(commands.Cog):
             )
              return
 
-        success = await asyncio.to_thread(self.db.update_game, title_search, **updates)
+        success = await self.db.update_game(title_search, **updates)
         
         if success:
              changes = ", ".join(updates.keys())

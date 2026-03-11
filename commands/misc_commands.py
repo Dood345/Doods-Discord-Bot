@@ -41,7 +41,7 @@ class MiscCommands(commands.Cog):
     @app_commands.command(name='clearhistory', description="Clear your AI conversation history")
     async def clear_history(self, interaction: discord.Interaction):
         """Clear your AI conversation history"""
-        self.ai_handler.clear_user_history(interaction.user.id)
+        await self.ai_handler.clear_user_history(interaction.user.id)
         await interaction.response.send_message("🤖 **Cave Johnson:** Memory banks wiped. I never saw you, you never saw me.", ephemeral=True)
     
     @app_commands.command(name='beer', description="Get a beer recommendation")

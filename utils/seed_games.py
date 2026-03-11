@@ -1,6 +1,7 @@
 import sqlite3
 import sys
 import io
+import asyncio
 from database import DatabaseHandler
 
 # Force UTF-8 encoding for stdout
@@ -171,16 +172,30 @@ seed_manifest = [
     {"title": "Heavenly Bodies", "tags": ["Physics", "Space", "Co-op", "Puzzle", "Comedy","Simulation"], "min": 1, "max": 2, "ideal": 2, "status": "Unknown", "rating": "Overwhelmingly Positive", "date": "2021", "state": "Full Release", "link": "https://store.steampowered.com/app/1138850/Heavenly_Bodies/", "note": "Zero-G movement is harder than it looks."},
 ]
 
-def seed_database():
+def get_unique_tags(manifest):
+    unique_tags = set()
+    
+    for game in manifest:
+        # Pull tags from each game entry
+        game_tags = game.get("tags", [])
+        
+        # Add to set (sets automatically ignore duplicates)
+        for tag in game_tags:
+            unique_tags.add(tag.strip())
+            
+    # Return a sorted list for better readability
+    return sorted(list(unique_tags))
+
+async def seed_database():
     print("🔬 Aperture Science Database Hard-Link Protocol Initiated.")
     
-    db.setup_tables()
+    await db.setup_tables()
     added_count = 0
     tag_count = 0
     
     for game in seed_manifest:
         # Check if game was successfully added (assuming add_game returns an ID or None)
-        game_id = db.add_game(
+        game_id = await db.add_game(
             title=game["title"],
             added_by=0, # System
             # Note: Depending on your DB schema, tags might need to be a string or list
@@ -227,7 +242,7 @@ def get_unique_tags(manifest):
 
 if __name__ == "__main__":
     # Execute and print
-    seed_database()
+    asyncio.run(seed_database())
     all_tags = get_unique_tags(seed_manifest)
 
     print(f"Total Unique Tags: {len(all_tags)}")
