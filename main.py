@@ -25,6 +25,8 @@ from commands.gift_commands import GiftCommands
 from commands.homelab_commands import HomeLabCommands
 from commands.image_cog import ImageCog
 from commands.music import MusicCommands
+from services.gift_service import GiftService
+from services.game_service import GameService
 
 # Setup logging
 setup_logging()
@@ -51,6 +53,10 @@ class DoodsBot(commands.Bot):
         
         # Initialize Database
         self.db = DatabaseHandler()
+        
+        # Initialize Service Layer abstractions
+        self.gift_service = GiftService(self.db)
+        self.game_service = GameService(self.db)
         
         self.ai_handler = AIHandler(self.db, self)
         self.reaction_handler = ReactionHandler()
