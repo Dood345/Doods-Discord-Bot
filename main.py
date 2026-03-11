@@ -61,7 +61,7 @@ class DoodsBot(commands.Bot):
     async def setup_hook(self):
         """Called when the bot is starting up"""
         # Setup Database Tables
-        self.db.setup_tables()
+        await self.db.setup_tables()
         
         # Add cogs
         await self.add_cog(CharacterCommands(self))
