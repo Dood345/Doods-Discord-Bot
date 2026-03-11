@@ -34,15 +34,18 @@ class MiscCommands(commands.Cog):
             if response:
                 await interaction.followup.send(f"{response}")
             else:
-                await interaction.followup.send("⚠️ **Cave:** The AI core is overheating. Try again in a moment.")
+                msg = self.bot.dialogue.get('cave_johnson', 'ai_overheating')
+                await interaction.followup.send(msg)
         else:
-            await interaction.followup.send("⚠️ AI features are disabled (Missing API Key).")
+            msg = self.bot.dialogue.get('cave_johnson', 'ai_disabled')
+            await interaction.followup.send(msg)
 
     @app_commands.command(name='clearhistory', description="Clear your AI conversation history")
     async def clear_history(self, interaction: discord.Interaction):
         """Clear your AI conversation history"""
         await self.ai_handler.clear_user_history(interaction.user.id)
-        await interaction.response.send_message("🤖 **Cave Johnson:** Memory banks wiped. I never saw you, you never saw me.", ephemeral=True)
+        msg = self.bot.dialogue.get('cave_johnson', 'ai_memory_wipe')
+        await interaction.response.send_message(msg, ephemeral=True)
     
     @app_commands.command(name='beer', description="Get a beer recommendation")
     async def beer_recommendation(self, interaction: discord.Interaction, preferences: str = None):
@@ -57,18 +60,7 @@ class MiscCommands(commands.Cog):
                 return
         
         # Fallback beers
-        fallback_beers = [
-            "Alamo Beer (if you can find it)",
-            "A nice cold Budweiser",
-            "Whatever's cheapest",
-            "Something with more alcohol",
-            "Beer? In this economy?",
-            "The one in your hand",
-            "Red Green's homemade brew (proceed with caution)",
-            "Duff Beer - it's what Homer would drink",
-            "Propane-flavored beer (Hank Hill's dream)",
-            "Something that pairs well with conspiracy theories"
-        ]
+        fallback_beers = self.bot.dialogue.get_list('cave_johnson', 'beer_recommendations')
         
         await interaction.followup.send(f"🍺 **Beer Recommendation:** {random.choice(fallback_beers)}")
     

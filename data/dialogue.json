@@ -1,0 +1,205 @@
+{
+  "cave_johnson": {
+    "greeting": [
+      "🎙️ **Cave Johnson here.**"
+    ],
+    "game_added_success": [
+      "🎙️ **Cave Johnson here.** We've secured a new simulation: **{title}**. Try not to break it. Actually, break it. That's what we pay you for. We don't pay you? Right. Carry on."
+    ],
+    "game_added_duplicate": [
+      "🎙️ **Cave Johnson here.** Administrative sabotage! The file for **{title}** already exists. Someone in filing is getting fired. Out of a cannon. Into the sun."
+    ],
+    "game_rate_out_of_bounds": [
+      "🎙️ **Cave Johnson here.** The rating scale is 1 to 10. Not zero, not negative five, not a billion. Follow instructions or you'll be demoted to 'Test Subject Class C'."
+    ],
+    "game_rate_eleven": [
+      "🎙️ **Cave Johnson here.** I see you selected 11. Listen, I like the enthusiasm, but the scale ends at 10. It's basic math. If you can't count to 10, don't touch the equipment."
+    ],
+    "game_rate_not_found": [
+      "🎙️ **Cave Johnson here.** Error. Simulation **{title_search}** not found. Are you hallucinating again? I told them to fix the gas leak in the break room."
+    ],
+    "game_rate_success": [
+      "🎙️ **Cave Johnson here.** Rating logged for **{title_search}**. You gave it a **{score}/10**. Your opinion has been noted and likely discarded by a computer. Get back to work."
+    ],
+    "game_list_empty": [
+      "🎙️ **Cave Johnson here.** The filing cabinets are empty. Either we solved all of science, or someone stole the files. Try loosening your search criteria."
+    ],
+    "game_update_empty": [
+      "🎙️ **Cave Johnson here.** You called the update protocol but didn't change anything. Are you testing ME? Stop wasting science time."
+    ],
+    "game_update_success": [
+      "🎙️ **Cave Johnson here.** Protocol **{new_title}** updated. Amended fields: **{changes}**. The lab boys are filing the paperwork. By which I mean they're shredding the old files."
+    ],
+    "game_update_fail": [
+      "🎙️ **Cave Johnson here.** Failed to update **{title_search}**. It's either locked, missing, or you're spelling it wrong. Try hitting the screen harder. That usually works."
+    ],
+    "system_error": [
+      "🎙️ **System Error.** Simulation data corrupted. Blame the Lab Boys."
+    ],
+    "ai_overheating": [
+      "⚠️ **Cave:** The AI core is overheating. Try again in a moment."
+    ],
+    "ai_disabled": [
+      "⚠️ AI features are disabled (Missing API Key)."
+    ],
+    "ai_memory_wipe": [
+      "🤖 **Cave Johnson:** Memory banks wiped. I never saw you, you never saw me."
+    ],
+    "beer_recommendations": [
+      "Alamo Beer (if you can find it)",
+      "A nice cold Budweiser",
+      "Whatever's cheapest",
+      "Something with more alcohol",
+      "Beer? In this economy?",
+      "The one in your hand",
+      "Red Green's homemade brew (proceed with caution)",
+      "Duff Beer - it's what Homer would drink",
+      "Propane-flavored beer (Hank Hill's dream)",
+      "Something that pairs well with conspiracy theories"
+    ]
+  },
+  "hank": {
+    "roasts": [
+      "{user} probably uses charcoal instead of propane, I tell you what!",
+      "{user}'s lawn maintenance skills are about as good as Bobby's interest in football.",
+      "That {user} ain't right, I tell you what.",
+      "{user} probably thinks butane is acceptable. Dang it!",
+      "{user} would put ketchup on a perfectly good steak, I tell you what!"
+    ],
+    "compliments": [
+      "{user} is a fine, upstanding citizen, I tell you what. Probably uses propane.",
+      "That {user} has a good head on their shoulders. Solid handshake, too.",
+      "I'd trust {user} to watch my lawn. That's high praise."
+    ],
+    "fallback": [
+      "*adjusts glasses* Yep."
+    ]
+  },
+  "dale": {
+    "roasts": [
+      "{user} is probably a government spy sent to monitor our propane usage!",
+      "I've been watching {user}, and their behavior is... suspicious.",
+      "{user} is exactly the type of person the shadow government would recruit!",
+      "Don't trust {user} - they're probably working for Big Tech!",
+      "{user} glows in the dark! Classic fed behavior!"
+    ],
+    "compliments": [
+      "{user} is one of the few who's truly awake. Keep your eyes open, friend.",
+      "I'd trust {user} in my bunker. They've got the right kind of paranoia.",
+      "Gih! {user} has the tactical awareness to spot a black helicopter from a mile away."
+    ],
+    "fallback": [
+      "Pocket sand! Sh-sh-sha!"
+    ]
+  },
+  "cartman": {
+    "roasts": [
+      "{user} is totally lame and not kewl like me!",
+      "Seriously {user}, you guys are being super cereal right now.",
+      "{user} probably doesn't even respect my authoritah!",
+      "{user} is almost as lame as Kyle... ALMOST.",
+      "Whatever {user}, I'm going home! This is weak!"
+    ],
+    "compliments": [
+      "You know what, {user}? You're... you're almost as cool as me. Almost.",
+      "{user} isn't a total butthole, which is pretty rare. Respect.",
+      "Okay, fine, {user} is pretty kewl. But I'm still the boss."
+    ],
+    "fallback": [
+      "Screw you guys, I'm going home."
+    ]
+  },
+  "redgreen": {
+    "roasts": [
+      "{user} couldn't fix a problem with a whole roll of duct tape and a 2x4.",
+      "If {user} was any more useless, they'd be a government program.",
+      "{user} is living proof that duct tape can't fix stupid.",
+      "{user} needs more help than a one-legged cat in a sandbox.",
+      "{user} couldn't find their way out of a paper bag with a map and a flashlight."
+    ],
+    "compliments": [
+      "{user} is more useful than a roll of duct tape at a family reunion.",
+      "If {user} was a tool, they'd be the whole toolbox. Keep your stick on the ice.",
+      "That {user} is as reliable as a '78 pickup truck held together with hope and zip ties."
+    ],
+    "fallback": [
+      "If women don't find you handsome, they should at least find you handy."
+    ]
+  },
+  "trek": {
+    "roasts": [
+      "Captain, I'm detecting unusual stupidity readings from {user}.",
+      "{user}'s intelligence levels are... illogical, Captain.",
+      "Computer analysis shows {user} is operating at 12% mental capacity.",
+      "{user} appears to be suffering from a severe logic malfunction.",
+      "Warning: {user} is emitting high levels of derp particles."
+    ],
+    "compliments": [
+      "Fascinating. {user}'s logic and efficiency are highly commendable.",
+      "{user}'s contributions to this crew are... significant. Well done.",
+      "The cognitive readings from {user} are off the charts, Captain. In a good way."
+    ],
+    "fallback": [
+      "Fascinating."
+    ]
+  },
+  "snake": {
+    "roasts": [
+      "{user} would blow their cover in the first 30 seconds of a stealth mission.",
+      "I've seen cardboard boxes with better tactical awareness than {user}.",
+      "{user} is the kind of soldier who would set off every alarm in Shadow Moses.",
+      "Metal Gear?! More like {user} Gear - completely useless!",
+      "{user} couldn't sneak past a sleeping guard dog."
+    ],
+    "compliments": [
+      "{user} has the instincts of a true soldier. I'd have them on my team.",
+      "Good situational awareness, {user}. You'd do well in the field.",
+      "You've got potential, {user}. Don't waste it."
+    ],
+    "fallback": [
+      "Kept you waiting, huh?"
+    ]
+  },
+  "kratos": {
+    "roasts": [
+      "{user} possesses all the combat prowess of a frightened sparrow.",
+      "The gods themselves mock {user}'s pitiful existence.",
+      "{user} would not survive one day in Sparta.",
+      "I have seen more courage in a newborn than in {user}.",
+      "{user}'s weakness brings shame to all mortals."
+    ],
+    "compliments": [
+      "Hmph. {user} fights with honor. A rare quality.",
+      "You have the spirit of a true warrior, {user}. Do not let the gods break it.",
+      "BOY. Learn from {user}. They know strength."
+    ],
+    "fallback": [
+      "BOY."
+    ]
+  },
+  "dante": {
+    "roasts": [
+      "{user} has reserved a special place in the circle of incompetence.",
+      "In Hell's hierarchy, {user} ranks below the indecisive.",
+      "{user}'s sins include crimes against intelligence itself.",
+      "Even the damned point and laugh at {user}.",
+      "{user} would get lost trying to find their way out of Limbo."
+    ],
+    "compliments": [
+      "{user} walks a righteous path. May it lead you from the darkness.",
+      "There is a light of virtue in {user} that even the damned can see.",
+      "The soul of {user} shines with a hope for redemption."
+    ],
+    "fallback": [
+      "Abandon all hope, ye who enter here."
+    ]
+  },
+  "alexjones": {
+    "conspiracy": [
+      "Folks, listen to me! {subject} {action} {object} {reason}! It's a war for your mind!"
+    ],
+    "fallback": [
+      "I'm a pioneer! I'm an explorer! I'm a human! And I'm coming!"
+    ]
+  }
+}

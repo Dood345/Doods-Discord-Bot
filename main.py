@@ -17,6 +17,7 @@ from config import BotConfig
 from utils.ai_handler import AIHandler
 from utils.reaction_handler import ReactionHandler
 from utils.database import DatabaseHandler
+from utils.dialogue_manager import DialogueManager
 from commands.character_commands import CharacterCommands
 from commands.social_commands import SocialCommands
 from commands.game_commands import GameCommands
@@ -55,8 +56,10 @@ class DoodsBot(commands.Bot):
         self.db = DatabaseHandler()
         
         # Initialize Service Layer abstractions
+        self.dialogue = DialogueManager()
+        
         self.gift_service = GiftService(self.db)
-        self.game_service = GameService(self.db)
+        self.game_service = GameService(self.db, self.dialogue)
         
         self.ai_handler = AIHandler(self.db, self)
         self.reaction_handler = ReactionHandler()
