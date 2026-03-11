@@ -6,6 +6,8 @@ import logging
 from datetime import datetime
 from dotenv import load_dotenv
 
+from utils.logger import setup_logging
+
 
 # Load environment variables FIRST before importing config
 load_dotenv()
@@ -25,7 +27,7 @@ from commands.image_cog import ImageCog
 from commands.music import MusicCommands
 
 # Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+setup_logging()
 logger = logging.getLogger(__name__)
 
 
