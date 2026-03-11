@@ -1,4 +1,5 @@
 git+https://github.com/Rapptz/discord.py@master
+davey
 google-genai
 python-dotenv==1.0.0
 Flask==3.0.0
@@ -10,3 +11,4 @@ websocket-client
 requests
 yt-dlp
 edge-tts
+aiosqlite

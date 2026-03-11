@@ -77,7 +77,7 @@ class AIHandler:
         try:
             # 1. Get recent context from DB
             # Use Global Context (pass None for guild_id) so Cave remembers you everywhere
-            history = self.db.get_ai_history(user_id, None, limit=20)
+            history = await self.db.get_ai_history(user_id, None, limit=20)
             
             # 2. Build context string
             context = ""
@@ -133,14 +133,14 @@ class AIHandler:
                 # 3. Dynamic Tag Detection
                 # We poll the DB for existing tags so the AI is always up to date
                 # Or, we use a curated list of high-priority tags:
-                known_tags = self.db.get_tags()
+                known_tags = await self.db.get_tags()
                 for t in known_tags:
                     if t in msg_lower:
                         tag = t
                         break # Take the first match for simplicity
 
                 # 4. Fire the Query
-                recommendations = self.db.recommend_games(min_players=min_players, tag=tag)
+                recommendations = await self.db.recommend_games(min_players=min_players, tag=tag)
                 database_context = f"\n{recommendations}\n"
             
             # Context: Music Status
@@ -208,8 +208,8 @@ class AIHandler:
                     response_text = "⚠️ **Cave Johnson:** [System Error] Aperture Science requires you to try that again."
 
             # 5. Save to DB (User message AND Bot response)
-            self.db.add_ai_message(user_id, guild_id, "user", message)
-            self.db.add_ai_message(user_id, guild_id, "model", response_text)
+            await self.db.add_ai_message(user_id, guild_id, "user", message)
+            await self.db.add_ai_message(user_id, guild_id, "model", response_text)
             
             return response_text
             
@@ -337,9 +337,9 @@ class AIHandler:
             logger.error(f"AI beer recommendation error: {e}")
             return None
     
-    def clear_user_history(self, user_id: int):
+    async def clear_user_history(self, user_id: int):
         """Clear conversation history for a specific user"""
-        self.db.clear_ai_history(user_id)
+        await self.db.clear_ai_history(user_id)
 
     async def enhance_image_prompt(self, user_prompt: str) -> str:
         """

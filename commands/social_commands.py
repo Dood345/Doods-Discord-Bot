@@ -42,7 +42,7 @@ class SocialCommands(commands.Cog):
         # Try AI first
         if self.ai_handler.is_available():
             # fetch history for context
-            history = self.bot.db.get_ai_history(member.id, interaction.guild.id if interaction.guild else None, limit=15)
+            history = await self.bot.db.get_ai_history(member.id, interaction.guild.id if interaction.guild else None, limit=15)
             
             ai_response = await self.ai_handler.get_roast_response(character, member.display_name, chat_history=history)
             if ai_response:
@@ -132,7 +132,7 @@ class SocialCommands(commands.Cog):
         # Try AI first
         if self.ai_handler.is_available():
             # fetch history for context
-            history = self.bot.db.get_ai_history(member.id, interaction.guild.id if interaction.guild else None, limit=15)
+            history = await self.bot.db.get_ai_history(member.id, interaction.guild.id if interaction.guild else None, limit=15)
 
             ai_response = await self.ai_handler.get_compliment_response(character, member.display_name, chat_history=history)
             if ai_response:
