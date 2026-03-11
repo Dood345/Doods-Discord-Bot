@@ -12,56 +12,25 @@ logger = logging.getLogger(__name__)
 class GameCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-        self.db = bot.db
+        self.game_service = bot.game_service
         
     # Group for /game commands
     game_group = app_commands.Group(name="game", description="Manage the Aperture Science Testing Library")
 
     async def game_title_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
         """Autocomplete for game titles"""
-        titles = await self.db.search_game_titles(current, interaction.guild_id)
+        titles = await self.game_service.search_game_titles(current, interaction.guild_id)
         return [app_commands.Choice(name=title, value=title) for title in titles]
 
     async def tag_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
         """Autocomplete for tags"""
-        # Fetch all tags (cached or fast query)
-        tags = await self.db.get_tags(interaction.guild_id)
-        
-        # Filter locally for now since the list is small (70 tags)
-        # In a larger system, you'd want a specific DB search method for tags
-        filtered = [t for t in tags if current.lower() in t.lower()]
-        
-        # Limit to 25 for Discord API
+        filtered = await self.game_service.get_filtered_tags(current, interaction.guild_id)
         return [app_commands.Choice(name=t, value=t) for t in filtered[:25]]
 
     async def tags_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
         """Autocomplete for multiple comma-separated tags"""
-        # Fetch all tags
-        all_tags = await self.db.get_tags(interaction.guild_id)
-        
-        # Handle comma-separated input
-        if ',' in current:
-            # usage: "Tag1, Tag2, Cur" -> prefix="Tag1, Tag2," search="Cur"
-            prefix, sep, search_term = current.rpartition(',')
-            prefix += sep + " " # Add space for readability
-            search_term = search_term.strip()
-        else:
-            prefix = ""
-            search_term = current.strip()
-
-        # Filter tags (case-insensitive)
-        filtered = [t for t in all_tags if search_term.lower() in t.lower()]
-        
-        # Limit to 25 choices
-        choices = []
-        for t in filtered[:25]:
-            display = f"{prefix}{t}"
-            # Ensure we don't exceed Discord's choice name length limit (100 chars)
-            if len(display) > 100:
-                display = display[:97] + "..."
-            choices.append(app_commands.Choice(name=display, value=display))
-            
-        return choices
+        choices = await self.game_service.get_comma_separated_tags(current, interaction.guild_id)
+        return [app_commands.Choice(name=name, value=value) for name, value in choices]
 
     @game_group.command(name="add", description="Submit a new mandatory fun module (simulation)")
     @app_commands.autocomplete(tags=tags_autocomplete)
@@ -101,87 +70,31 @@ class GameCommands(commands.Cog):
         """Add a game to the library"""
         await interaction.response.defer()
         
-        # Parse tags
-        tag_list = [t.strip() for t in tags.split(',')] if tags else []
-
-        # Add to database
-        game_id = await self.db.add_game(
-            title=title, 
-            added_by=interaction.user.id, 
-            guild_id=interaction.guild_id,
-            min_players=min_players, 
-            max_players=max_players,
-            ideal_players=ideal_players,
-            store_link=link,
-            status=status.value if status else 'unknown',
+        success, message = await self.game_service.add_game(
+            title=title, added_by=interaction.user.id, guild_id=interaction.guild_id,
+            min_players=min_players, max_players=max_players, ideal_players=ideal_players,
+            store_link=link, status=status.value if status else 'unknown',
             release_state=release_state.value if release_state else None,
-            external_rating=external_rating,
-            notes=notes,
-            category=category,
-            release_date=release_date,
-            tags=tag_list
+            external_rating=external_rating, notes=notes, category=category,
+            release_date=release_date, tags=tags
         )
         
-        if game_id != -1:
-            await interaction.followup.send(
-                f"🎙️ **Cave Johnson here.** We've secured a new simulation: **{title}**. "
-                "Try not to break it. Actually, break it. That's what we pay you for. "
-                "We don't pay you? Right. Carry on."
-            )
-        else:
-            await interaction.followup.send(
-                f"🎙️ **Cave Johnson here.** Administrative sabotage! "
-                f"The file for **{title}** already exists. "
-                "Someone in filing is getting fired. Out of a cannon. Into the sun."
-            )
+        await interaction.followup.send(message)
 
     @game_group.command(name="rate", description="Rate a simulation's testing viability")
     @app_commands.autocomplete(title_search=game_title_autocomplete)
     async def rate_game(self, interaction: discord.Interaction, title_search: str, score: int):
         """Rate a game (1-10)"""
-        # Check for integer incompetence
-        if score < 1 or score > 10:
-            if score == 11:
-                await interaction.response.send_message(
-                    "🎙️ **Cave Johnson here.** I see you selected 11. "
-                    "Listen, I like the enthusiasm, but the scale ends at 10. "
-                    "It's basic math. If you can't count to 10, don't touch the equipment.",
-                    ephemeral=True
-                )
-            else:
-                await interaction.response.send_message(
-                    "🎙️ **Cave Johnson here.** The rating scale is 1 to 10. "
-                    "Not zero, not negative five, not a billion. "
-                    "Follow instructions or you'll be demoted to 'Test Subject Class C'.",
-                    ephemeral=True
-                )
-            return
-
         await interaction.response.defer()
-        
-        # Check if game exists
-        games = await self.db.search_game_titles(title_search, interaction.guild_id)
-        if title_search not in games:
-             await interaction.followup.send(
-                f"🎙️ **Cave Johnson here.** Error. Simulation **{title_search}** not found. "
-                "Are you hallucinating again? I told them to fix the gas leak in the break room.",
-                ephemeral=True
-            )
-             return
-
-        # Get ID
-        library = await self.db.get_game_library(interaction.guild_id) 
-        game = next((g for g in library if g['title'] == title_search), None)
-        
-        if game:
-            await self.db.rate_game(game['id'], interaction.user.id, interaction.guild.id, score)
-            await interaction.followup.send(
-                f"🎙️ **Cave Johnson here.** Rating logged for **{title_search}**. "
-                f"You gave it a **{score}/10**. Your opinion has been noted and likely discarded by a computer. "
-                "Get back to work."
-            )
-        else:
-             await interaction.followup.send("🎙️ **System Error.** Simulation data corrupted. Blame the Lab Boys.")
+        success, message = await self.game_service.rate_game(
+            title_search, score, interaction.user.id, interaction.guild_id
+        )
+        # Emulate the ephemeral warning behavior for rating scale and missing games
+        if not success and (score < 1 or score > 10 or "not found" in message):
+            await interaction.followup.send(message, ephemeral=True)
+            return
+            
+        await interaction.followup.send(message)
 
     @game_group.command(name="list", description="View the dossier of available simulations")
     @app_commands.autocomplete(tag_search=tag_autocomplete)
@@ -214,11 +127,11 @@ class GameCommands(commands.Cog):
         state_val = release_state.value if release_state else None
         
         # Async DB Call
-        games = await self.db.get_game_library(
+        games = await self.game_service.get_library(
             guild_id=interaction.guild.id,
             status_filter=status_val,
-            tag_filter=tag_search,
-            player_count=players,
+            tag_search=tag_search,
+            players=players,
             release_state=state_val
         )
         
@@ -332,31 +245,16 @@ class GameCommands(commands.Cog):
         if last_update: updates['last_update'] = last_update
         if link: updates['store_link'] = link
         if notes: updates['notes'] = notes
-        
-        if not updates:
-             await interaction.followup.send(
-                f"🎙️ **Cave Johnson here.** You called the update protocol but didn't change anything. "
-                "Are you testing ME? Stop wasting science time.",
-                ephemeral=True
-            )
-             return
 
-        success = await self.db.update_game(title_search, interaction.guild_id, **updates)
+        success, message = await self.game_service.update_game(
+            title_search, interaction.guild_id, updates
+        )
         
-        if success:
-             changes = ", ".join(updates.keys())
-             new_title = title if title else title_search
-             await interaction.followup.send(
-                f"🎙️ **Cave Johnson here.** Protocol **{new_title}** updated. "
-                f"Amended fields: **{changes}**. "
-                "The lab boys are filing the paperwork. By which I mean they're shredding the old files."
-            )
-        else:
-             await interaction.followup.send(
-                f"🎙️ **Cave Johnson here.** Failed to update **{title_search}**. "
-                "It's either locked, missing, or you're spelling it wrong. "
-                "Try hitting the screen harder. That usually works."
-            )
+        if not success and "didn't change anything" in message:
+             await interaction.followup.send(message, ephemeral=True)
+             return
+             
+        await interaction.followup.send(message)
 
 async def setup(bot):
     await bot.add_cog(GameCommands(bot))
