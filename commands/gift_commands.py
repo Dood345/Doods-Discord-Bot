@@ -16,8 +16,8 @@ class GiftCommands(commands.Cog):
     async def gift_add(self, interaction: discord.Interaction, item: str, link: str = "No Link"):
         try:
             async with self.bot.db.get_connection() as conn:
-                await conn.execute("INSERT INTO gifts (user_id, item_name, link, claimed_by) VALUES (?, ?, ?, NULL)", 
-                        (interaction.user.id, item, link))
+                await conn.execute("INSERT INTO gifts (user_id, guild_id, item_name, link, claimed_by) VALUES (?, ?, ?, ?, NULL)", 
+                        (interaction.user.id, interaction.guild_id, item, link))
                 await conn.commit()
             await interaction.response.send_message(f"🎁 Added **{item}** to your list!", ephemeral=True)
         except Exception as e:
@@ -28,7 +28,7 @@ class GiftCommands(commands.Cog):
     async def gift_view(self, interaction: discord.Interaction, user: discord.User):
         try:
             async with self.bot.db.get_connection() as conn:
-                async with conn.execute("SELECT id, item_name, link, claimed_by FROM gifts WHERE user_id = ?", (user.id,)) as cursor:
+                async with conn.execute("SELECT id, item_name, link, claimed_by FROM gifts WHERE user_id = ? AND guild_id = ?", (user.id, interaction.guild_id)) as cursor:
                     items = await cursor.fetchall()
 
             if not items:
@@ -55,7 +55,7 @@ class GiftCommands(commands.Cog):
         try:
             async with self.bot.db.get_connection() as conn:
                 # Check if already claimed
-                async with conn.execute("SELECT claimed_by, user_id FROM gifts WHERE id = ?", (item_id,)) as cursor:
+                async with conn.execute("SELECT claimed_by, user_id FROM gifts WHERE id = ? AND guild_id = ?", (item_id, interaction.guild_id)) as cursor:
                     result = await cursor.fetchone()
                 
                 if not result:
@@ -65,7 +65,7 @@ class GiftCommands(commands.Cog):
                 elif result[0] is not None:
                     await interaction.response.send_message("Someone else already claimed this!", ephemeral=True)
                 else:
-                    await conn.execute("UPDATE gifts SET claimed_by = ? WHERE id = ?", (interaction.user.id, item_id))
+                    await conn.execute("UPDATE gifts SET claimed_by = ? WHERE id = ? AND guild_id = ?", (interaction.user.id, item_id, interaction.guild_id))
                     await conn.commit()
                     await interaction.response.send_message("🎉 You claimed this item! The owner will see it as claimed, but not by whom.", ephemeral=True)
         except Exception as e:
@@ -77,7 +77,7 @@ class GiftCommands(commands.Cog):
         try:
             async with self.bot.db.get_connection() as conn:
                 # Check if item exists and belongs to user
-                async with conn.execute("SELECT user_id FROM gifts WHERE id = ?", (item_id,)) as cursor:
+                async with conn.execute("SELECT user_id FROM gifts WHERE id = ? AND guild_id = ?", (item_id, interaction.guild_id)) as cursor:
                     result = await cursor.fetchone()
                 
                 if not result:
@@ -85,7 +85,7 @@ class GiftCommands(commands.Cog):
                 elif result[0] != interaction.user.id:
                     await interaction.response.send_message("You can only remove items from your own list!", ephemeral=True)
                 else:
-                    await conn.execute("DELETE FROM gifts WHERE id = ?", (item_id,))
+                    await conn.execute("DELETE FROM gifts WHERE id = ? AND guild_id = ?", (item_id, interaction.guild_id))
                     await conn.commit()
                     await interaction.response.send_message(f"🗑️ Removed item {item_id} from your list.", ephemeral=True)
         except Exception as e:
@@ -97,7 +97,7 @@ class GiftCommands(commands.Cog):
         try:
             async with self.bot.db.get_connection() as conn:
                 # Check if item exists and was claimed by user
-                async with conn.execute("SELECT claimed_by FROM gifts WHERE id = ?", (item_id,)) as cursor:
+                async with conn.execute("SELECT claimed_by FROM gifts WHERE id = ? AND guild_id = ?", (item_id, interaction.guild_id)) as cursor:
                     result = await cursor.fetchone()
                 
                 if not result:
@@ -105,7 +105,7 @@ class GiftCommands(commands.Cog):
                 elif result[0] != interaction.user.id:
                     await interaction.response.send_message("You haven't claimed this item!", ephemeral=True)
                 else:
-                    await conn.execute("UPDATE gifts SET claimed_by = NULL WHERE id = ?", (item_id,))
+                    await conn.execute("UPDATE gifts SET claimed_by = NULL WHERE id = ? AND guild_id = ?", (item_id, interaction.guild_id))
                     await conn.commit()
                     await interaction.response.send_message("↩️ Unclaimed item. It is now available for others.", ephemeral=True)
         except Exception as e:

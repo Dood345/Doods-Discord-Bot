@@ -19,13 +19,13 @@ class GameCommands(commands.Cog):
 
     async def game_title_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
         """Autocomplete for game titles"""
-        titles = await self.db.search_game_titles(current)
+        titles = await self.db.search_game_titles(current, interaction.guild_id)
         return [app_commands.Choice(name=title, value=title) for title in titles]
 
     async def tag_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
         """Autocomplete for tags"""
         # Fetch all tags (cached or fast query)
-        tags = await self.db.get_tags()
+        tags = await self.db.get_tags(interaction.guild_id)
         
         # Filter locally for now since the list is small (70 tags)
         # In a larger system, you'd want a specific DB search method for tags
@@ -37,7 +37,7 @@ class GameCommands(commands.Cog):
     async def tags_autocomplete(self, interaction: discord.Interaction, current: str) -> List[app_commands.Choice[str]]:
         """Autocomplete for multiple comma-separated tags"""
         # Fetch all tags
-        all_tags = await self.db.get_tags()
+        all_tags = await self.db.get_tags(interaction.guild_id)
         
         # Handle comma-separated input
         if ',' in current:
@@ -108,6 +108,7 @@ class GameCommands(commands.Cog):
         game_id = await self.db.add_game(
             title=title, 
             added_by=interaction.user.id, 
+            guild_id=interaction.guild_id,
             min_players=min_players, 
             max_players=max_players,
             ideal_players=ideal_players,
@@ -159,7 +160,7 @@ class GameCommands(commands.Cog):
         await interaction.response.defer()
         
         # Check if game exists
-        games = await self.db.search_game_titles(title_search)
+        games = await self.db.search_game_titles(title_search, interaction.guild_id)
         if title_search not in games:
              await interaction.followup.send(
                 f"🎙️ **Cave Johnson here.** Error. Simulation **{title_search}** not found. "
@@ -169,7 +170,7 @@ class GameCommands(commands.Cog):
              return
 
         # Get ID
-        library = await self.db.get_game_library() 
+        library = await self.db.get_game_library(interaction.guild_id) 
         game = next((g for g in library if g['title'] == title_search), None)
         
         if game:
@@ -340,7 +341,7 @@ class GameCommands(commands.Cog):
             )
              return
 
-        success = await self.db.update_game(title_search, **updates)
+        success = await self.db.update_game(title_search, interaction.guild_id, **updates)
         
         if success:
              changes = ", ".join(updates.keys())

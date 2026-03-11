@@ -21,7 +21,7 @@ class DatabaseHandler:
             async with self.get_connection() as conn:
                 # --- Existing Tables ---
                 await conn.execute('''CREATE TABLE IF NOT EXISTS gifts
-                            (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, item_name TEXT, link TEXT, claimed_by INTEGER)''')
+                            (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, guild_id INTEGER, item_name TEXT, link TEXT, claimed_by INTEGER)''')
                 
                 await conn.execute('''CREATE TABLE IF NOT EXISTS ai_history
                             (id INTEGER PRIMARY KEY AUTOINCREMENT, 
@@ -36,7 +36,7 @@ class DatabaseHandler:
                 # Added: external_rating
                 await conn.execute('''CREATE TABLE IF NOT EXISTS games
                             (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                             title TEXT UNIQUE,
+                             title TEXT,
                              category TEXT,
                              min_players INTEGER,
                              max_players INTEGER,
@@ -49,7 +49,9 @@ class DatabaseHandler:
                              last_update TEXT,
                              store_link TEXT,
                              added_by INTEGER,
-                             created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+                             guild_id INTEGER,
+                             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                             UNIQUE(title, guild_id))''')
 
                 # --- NEW: Ratings/Votes ---
                 # One rating per user per game per server
@@ -65,8 +67,10 @@ class DatabaseHandler:
                 # 1. Tags Table: Stores unique tag names
                 await conn.execute('''CREATE TABLE IF NOT EXISTS tags
                             (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                             name TEXT UNIQUE,
-                             created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+                             name TEXT,
+                             guild_id INTEGER,
+                             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                             UNIQUE(name, guild_id))''')
 
                 # 2. Game_Tags Table: Links Games to Tags via IDs
                 await conn.execute('''CREATE TABLE IF NOT EXISTS game_tags
@@ -83,14 +87,14 @@ class DatabaseHandler:
 
     # --- Game Methods ---
 
-    async def add_game(self, title: str, added_by: int, tags: Optional[List[str]] = None, **kwargs) -> int:
+    async def add_game(self, title: str, added_by: int, guild_id: int, tags: Optional[List[str]] = None, **kwargs) -> int:
         """Add a new simulation to the roster. Returns the new Game ID."""
         try:
             async with self.get_connection() as conn:
                 # Dynamic query building based on provided kwargs
-                columns = ['title', 'added_by']
-                values = [title, added_by]
-                placeholders = ['?', '?']
+                columns = ['title', 'added_by', 'guild_id']
+                values = [title, added_by, guild_id]
+                placeholders = ['?', '?', '?']
                 
                 for key, value in kwargs.items():
                     if value is not None:
@@ -105,7 +109,7 @@ class DatabaseHandler:
             
             # Handle tags if provided
             if tags and game_id:
-                await self.add_tags(game_id, tags)
+                await self.add_tags(game_id, tags, guild_id)
                 
             return game_id
         except aiosqlite.IntegrityError:
@@ -125,7 +129,7 @@ class DatabaseHandler:
         except Exception as e:
             logger.error(f"Rating failed: {e}")
 
-    async def add_tags(self, game_id: int, tags: List[str]):
+    async def add_tags(self, game_id: int, tags: List[str], guild_id: int):
         """Attach classifiction tags to a game using the new normalized schema."""
         if not tags:
             return
@@ -140,10 +144,10 @@ class DatabaseHandler:
                     
                     # 1. Ensure tag exists in 'tags' table and get its ID
                     # We use INSERT OR IGNORE then a SELECT to handle concurrency/duplicates
-                    await conn.execute("INSERT OR IGNORE INTO tags (name) VALUES (?)", (tag_clean,))
+                    await conn.execute("INSERT OR IGNORE INTO tags (name, guild_id) VALUES (?, ?)", (tag_clean, guild_id))
                     
                     # If it was ignored, we still need the ID.
-                    async with conn.execute("SELECT id FROM tags WHERE name = ?", (tag_clean,)) as cursor:
+                    async with conn.execute("SELECT id FROM tags WHERE name = ? AND guild_id = ?", (tag_clean, guild_id)) as cursor:
                         result = await cursor.fetchone()
                     
                     if result:
@@ -156,7 +160,7 @@ class DatabaseHandler:
             logger.error(f"Tagging failed: {e}")
 
     async def get_game_library(self, 
-                         guild_id: Optional[int] = None,
+                         guild_id: int,
                          status_filter: Optional[str] = None, 
                          tag_filter: Optional[str] = None, 
                          player_count: Optional[int] = None,
@@ -177,13 +181,13 @@ class DatabaseHandler:
                            AVG(r.rating) as avg_rating,
                            GROUP_CONCAT(t.name, ', ') as tags
                     FROM games g
-                    LEFT JOIN game_ratings r ON g.id = r.game_id AND r.guild_id = ?
+                    LEFT JOIN game_ratings r ON g.id = r.game_id
                     LEFT JOIN game_tags gt ON g.id = gt.game_id
                     LEFT JOIN tags t ON gt.tag_id = t.id
-                    WHERE 1=1
+                    WHERE g.guild_id = ?
                 """
                 
-                params = [guild_id] # Start with guild_id for the JOIN
+                params = [guild_id] # Start with guild_id for WHERE clause
                 
                 # Dynamic Filters
                 if status_filter:
@@ -221,7 +225,7 @@ class DatabaseHandler:
             logger.error(f"Failed to fetch library: {e}")
             return []
 
-    async def update_game(self, title: str, **kwargs) -> bool:
+    async def update_game(self, title: str, guild_id: int, **kwargs) -> bool:
         """
         Generic update method for game fields.
         Usage: db.update_game("Factorio", status="playing", min_players=10)
@@ -243,9 +247,9 @@ class DatabaseHandler:
                     values.append(value)
                 
                 # Add the WHERE clause parameter
-                values.append(title)
+                values.extend([title, guild_id])
                 
-                query = f"UPDATE games SET {', '.join(set_clauses)} WHERE title = ?"
+                query = f"UPDATE games SET {', '.join(set_clauses)} WHERE title = ? AND guild_id = ?"
                 
                 cursor = await conn.execute(query, values)
                 success = cursor.rowcount > 0
@@ -256,11 +260,11 @@ class DatabaseHandler:
             logger.error(f"Failed to update game {title}: {e}")
             return False
 
-    async def search_game_titles(self, query: str) -> List[str]:
+    async def search_game_titles(self, query: str, guild_id: int) -> List[str]:
         """Search game titles for autocomplete"""
         try:
             async with self.get_connection() as conn:
-                async with conn.execute("SELECT title FROM games WHERE title LIKE ? LIMIT 25", (f'%{query}%',)) as cursor:
+                async with conn.execute("SELECT title FROM games WHERE title LIKE ? AND guild_id = ? LIMIT 25", (f'%{query}%', guild_id)) as cursor:
                     rows = await cursor.fetchall()
                 return [r[0] for r in rows]
         except Exception as e:
@@ -301,17 +305,17 @@ class DatabaseHandler:
         except Exception as e:
             logger.error(f"Failed to clear AI history: {e}")
 
-    async def get_tags(self) -> List[str]:
+    async def get_tags(self, guild_id: int) -> List[str]:
         try:
             async with self.get_connection() as conn:
-                async with conn.execute("SELECT name FROM tags ORDER BY name ASC") as cursor:
+                async with conn.execute("SELECT name FROM tags WHERE guild_id = ? ORDER BY name ASC", (guild_id,)) as cursor:
                     rows = await cursor.fetchall()
                 return [r[0] for r in rows]
         except Exception as e:
             logger.error(f"Failed to get tags: {e}")
             return []
 
-    async def recommend_games(self, min_players: int = 0, tag: Optional[str] = None, limit: int = 5) -> str:
+    async def recommend_games(self, guild_id: int, min_players: int = 0, tag: Optional[str] = None, limit: int = 5) -> str:
         """
         Searches the DB and returns a formatted string for the AI to read.
         """
@@ -319,8 +323,8 @@ class DatabaseHandler:
             async with self.get_connection() as conn:
                 conn.row_factory = aiosqlite.Row
                 
-                query = "SELECT title, min_players, max_players, notes FROM games WHERE 1=1"
-                params = []
+                query = "SELECT title, min_players, max_players, notes FROM games WHERE guild_id = ?"
+                params = [guild_id]
                 
                 if min_players > 0:
                     query += " AND max_players >= ?"

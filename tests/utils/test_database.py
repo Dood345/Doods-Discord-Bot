@@ -14,10 +14,10 @@ async def test_database_initialization(temp_db):
 @pytest.mark.asyncio
 async def test_add_and_retrieve_game(temp_db):
     """Test adding a game and retrieving it via the library wrapper."""
-    # 1. Add Game
     game_id = await temp_db.add_game(
         title="Portal",
         added_by=123,
+        guild_id=12345,
         min_players=1,
         max_players=1,
         category="Puzzle"
@@ -25,11 +25,11 @@ async def test_add_and_retrieve_game(temp_db):
     assert game_id > 0, "Failed to return a valid game ID."
 
     # 2. Add Duplicate Game (Should return -1 due to UNIQUE constraint handled in try/except)
-    duplicate_id = await temp_db.add_game(title="Portal", added_by=456)
+    duplicate_id = await temp_db.add_game(title="Portal", added_by=456, guild_id=12345)
     assert duplicate_id == -1, "Duplicate game insertion did not return -1 as expected."
 
     # 3. Retrieve Library
-    library = await temp_db.get_game_library()
+    library = await temp_db.get_game_library(guild_id=12345)
     assert len(library) == 1, "Library should contain exactly 1 game."
     
     game = library[0]
@@ -43,17 +43,18 @@ async def test_game_tags(temp_db):
     game_id = await temp_db.add_game(
         title="Half-Life 2",
         added_by=123,
+        guild_id=12345,
         tags=["FPS", "Sci-Fi", "Classic"]
     )
     
     # Verify tags exist globally
-    all_tags = await temp_db.get_tags()
+    all_tags = await temp_db.get_tags(guild_id=12345)
     assert "FPS" in all_tags
     assert "Sci-Fi" in all_tags
     assert len(all_tags) == 3
 
     # Verify game library returns the concatenated tags
-    library = await temp_db.get_game_library()
+    library = await temp_db.get_game_library(guild_id=12345)
     tags_str = library[0]["tags"]
     assert "FPS" in tags_str
     assert "Sci-Fi" in tags_str
@@ -61,8 +62,8 @@ async def test_game_tags(temp_db):
 @pytest.mark.asyncio
 async def test_game_ratings(temp_db):
     """Test submitting and averaging game ratings."""
-    game_id = await temp_db.add_game(title="Left 4 Dead 2", added_by=123)
-    guild_id = 999
+    game_id = await temp_db.add_game(title="Left 4 Dead 2", added_by=123, guild_id=12345)
+    guild_id = 12345
     
     # 1. Add two ratings from different users in the same guild
     await temp_db.rate_game(game_id, user_id=1, guild_id=guild_id, rating=10)
@@ -78,25 +79,25 @@ async def test_game_ratings(temp_db):
 @pytest.mark.asyncio
 async def test_update_game(temp_db):
     """Test updating arbitrary generic fields on a game entry."""
-    await temp_db.add_game(title="Factorio", added_by=123, status="wishlist")
+    await temp_db.add_game(title="Factorio", added_by=123, guild_id=12345, status="wishlist")
     
     # Update status and a metric
-    success = await temp_db.update_game("Factorio", status="playing", min_players=1)
+    success = await temp_db.update_game("Factorio", guild_id=12345, status="playing", min_players=1)
     assert success is True
     
     # Verify the update took hold
-    library = await temp_db.get_game_library()
+    library = await temp_db.get_game_library(guild_id=12345)
     assert library[0]["status"] == "playing"
     assert library[0]["min_players"] == 1
 
 @pytest.mark.asyncio
 async def test_search_game_titles(temp_db):
     """Test autocomplete prefix searching."""
-    await temp_db.add_game(title="Super Smash Bros", added_by=123)
-    await temp_db.add_game(title="Super Mario 64", added_by=123)
-    await temp_db.add_game(title="Halo", added_by=123)
+    await temp_db.add_game(title="Super Smash Bros", added_by=123, guild_id=12345)
+    await temp_db.add_game(title="Super Mario 64", added_by=123, guild_id=12345)
+    await temp_db.add_game(title="Halo", added_by=123, guild_id=12345)
     
-    results = await temp_db.search_game_titles("Super")
+    results = await temp_db.search_game_titles("Super", guild_id=12345)
     assert len(results) == 2
     assert "Super Smash Bros" in results
     assert "Super Mario 64" in results
@@ -128,14 +129,14 @@ async def test_ai_history(temp_db):
 @pytest.mark.asyncio
 async def test_recommend_games(temp_db):
     """Test the RAG formatted string generator."""
-    await temp_db.add_game(title="Coop Game A", added_by=123, min_players=2, max_players=4, tags=["Co-op"], notes="Fun")
-    await temp_db.add_game(title="Solo Game B", added_by=123, min_players=1, max_players=1, notes="Lonely")
+    await temp_db.add_game(title="Coop Game A", added_by=123, guild_id=12345, min_players=2, max_players=4, tags=["Co-op"], notes="Fun")
+    await temp_db.add_game(title="Solo Game B", added_by=123, guild_id=12345, min_players=1, max_players=1, notes="Lonely")
     
     # Search for Co-op
-    result = await temp_db.recommend_games(min_players=3, tag="Co-op")
+    result = await temp_db.recommend_games(guild_id=12345, min_players=3, tag="Co-op")
     assert "Coop Game A" in result
     assert "Solo Game B" not in result
     
     # Search for non-existent
-    result_empty = await temp_db.recommend_games(min_players=10)
+    result_empty = await temp_db.recommend_games(guild_id=12345, min_players=10)
     assert "No simulations found" in result_empty

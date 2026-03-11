@@ -133,14 +133,14 @@ class AIHandler:
                 # 3. Dynamic Tag Detection
                 # We poll the DB for existing tags so the AI is always up to date
                 # Or, we use a curated list of high-priority tags:
-                known_tags = await self.db.get_tags()
+                known_tags = await self.db.get_tags(guild_id) if guild_id else []
                 for t in known_tags:
                     if t in msg_lower:
                         tag = t
                         break # Take the first match for simplicity
 
                 # 4. Fire the Query
-                recommendations = await self.db.recommend_games(min_players=min_players, tag=tag)
+                recommendations = await self.db.recommend_games(guild_id=guild_id, min_players=min_players, tag=tag) if guild_id else "No server context."
                 database_context = f"\n{recommendations}\n"
             
             # Context: Music Status
