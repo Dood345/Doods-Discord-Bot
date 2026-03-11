@@ -18,7 +18,7 @@ class ImageCog(commands.Cog):
 
         # 0. Fast Status Check
         if not await self.bot.loop.run_in_executor(None, is_comfy_online):
-             await interaction.followup.send("🔌 **Service Unavailable:** ComfyUI is currently offline. Please try again later.")
+             await interaction.followup.send(self.bot.dialogue.get("system", "image_offline"))
              return
 
         try:
@@ -27,16 +27,16 @@ class ImageCog(commands.Cog):
             
             if hasattr(self.bot, 'ai_handler') and self.bot.ai_handler.is_available():
                 # Notify user we are enhancing
-                await interaction.followup.send(f"🎨 **Processing Request:** *{prompt}*\n✨ Enhancing prompt and checking safety...", ephemeral=True)
+                await interaction.followup.send(self.bot.dialogue.get("system", "image_processing", prompt=prompt), ephemeral=True)
                 
                 enhanced_prompt = await self.bot.ai_handler.enhance_image_prompt(prompt)
                 
                 if enhanced_prompt == "SAFE_REFUSAL":
-                    await interaction.channel.send(f"🚫 **Request Denied:** I cannot generate that image due to safety guidelines (Too horny/Child Safety/CSAM Protection).")
+                    await interaction.channel.send(self.bot.dialogue.get("system", "image_denied"))
                     return # Exit cleanly
             
             # Update status
-            msg = await interaction.channel.send(f"🖌️ **Generating:** *{enhanced_prompt}*\n(This may take a moment...)")
+            msg = await interaction.channel.send(self.bot.dialogue.get("system", "image_generating", enhanced_prompt=enhanced_prompt))
 
             # 2. Generate Image (Blocking call in executor)
             image_bytes = await self.bot.loop.run_in_executor(None, generate_image, enhanced_prompt)
@@ -44,13 +44,13 @@ class ImageCog(commands.Cog):
             if image_bytes:
                 file = discord.File(io.BytesIO(image_bytes), filename="generated.png")
                 await msg.delete() # Remove the status message
-                await interaction.channel.send(f"🖼️ **Result for:** *{prompt}*\n**Enhanced Prompt:** *{enhanced_prompt}*", file=file)
+                await interaction.channel.send(self.bot.dialogue.get("system", "image_success", prompt=prompt, enhanced_prompt=enhanced_prompt), file=file)
             else:
-                await msg.edit(content=f"⚠️ **Generation Failed:** Could not connect to ComfyUI or an error occurred.")
+                await msg.edit(content=self.bot.dialogue.get("system", "image_failed"))
         
         except Exception as e:
             logger.error(f"Image generation error: {e}")
-            await interaction.followup.send(f"❌ **Error:** Something went wrong: {e}")
+            await interaction.followup.send(self.bot.dialogue.get("system", "image_error", error=str(e)))
 
 async def setup(bot):
     await bot.add_cog(ImageCog(bot))

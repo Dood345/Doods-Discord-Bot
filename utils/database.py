@@ -184,10 +184,13 @@ class DatabaseHandler:
                     LEFT JOIN game_ratings r ON g.id = r.game_id
                     LEFT JOIN game_tags gt ON g.id = gt.game_id
                     LEFT JOIN tags t ON gt.tag_id = t.id
-                    WHERE g.guild_id = ?
+                    WHERE g.guild_id IN (?, 0)
                 """
                 
-                params = [guild_id] # Start with guild_id for WHERE clause
+                params = [guild_id, guild_id] # Start with guild_id for WHERE IN clause (local, global are bound)
+                # Note: SQLite IN (?, 0) naturally takes [guild_id], but let's bind explicitly to just be safe.
+                # Actually, IN (?, 0) is static 0. We just need to pass `guild_id` once.
+                params = [guild_id] 
                 
                 # Dynamic Filters
                 if status_filter:
@@ -264,7 +267,7 @@ class DatabaseHandler:
         """Search game titles for autocomplete"""
         try:
             async with self.get_connection() as conn:
-                async with conn.execute("SELECT title FROM games WHERE title LIKE ? AND guild_id = ? LIMIT 25", (f'%{query}%', guild_id)) as cursor:
+                async with conn.execute("SELECT title FROM games WHERE title LIKE ? AND guild_id IN (?, 0) LIMIT 25", (f'%{query}%', guild_id)) as cursor:
                     rows = await cursor.fetchall()
                 return [r[0] for r in rows]
         except Exception as e:
@@ -308,7 +311,8 @@ class DatabaseHandler:
     async def get_tags(self, guild_id: int) -> List[str]:
         try:
             async with self.get_connection() as conn:
-                async with conn.execute("SELECT name FROM tags WHERE guild_id = ? ORDER BY name ASC", (guild_id,)) as cursor:
+                # Get tags across both scopes
+                async with conn.execute("SELECT DISTINCT name FROM tags WHERE guild_id IN (?, 0) ORDER BY name ASC", (guild_id,)) as cursor:
                     rows = await cursor.fetchall()
                 return [r[0] for r in rows]
         except Exception as e:
@@ -323,7 +327,7 @@ class DatabaseHandler:
             async with self.get_connection() as conn:
                 conn.row_factory = aiosqlite.Row
                 
-                query = "SELECT title, min_players, max_players, notes FROM games WHERE guild_id = ?"
+                query = "SELECT title, min_players, max_players, notes FROM games WHERE guild_id IN (?, 0)"
                 params = [guild_id]
                 
                 if min_players > 0:

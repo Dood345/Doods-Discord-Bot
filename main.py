@@ -62,7 +62,7 @@ class DoodsBot(commands.Bot):
         self.game_service = GameService(self.db, self.dialogue)
         
         self.ai_handler = AIHandler(self.db, self)
-        self.reaction_handler = ReactionHandler()
+        self.reaction_handler = ReactionHandler(self.dialogue)
         
         # User conversation histories for AI
         self.user_histories = {}

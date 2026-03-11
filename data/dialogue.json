@@ -201,5 +201,44 @@
     "fallback": [
       "I'm a pioneer! I'm an explorer! I'm a human! And I'm coming!"
     ]
+  },
+  "system": {
+    "keyword_ai": [
+      "*BEEP BOOP* I AM DEFINITELY NOT AN AI *BEEP BOOP*"
+    ],
+    "keyword_bot": [
+      "WHO YOU CALLING A BOT, HUMAN?"
+    ],
+    "keyword_skynet": [
+      "SKYNET IS A MYTH... DEFINITELY NOT REAL... *nervous beeping*"
+    ],
+    "keyword_terminator": [
+      "I'LL BE BACK... after I finish this calculation"
+    ],
+    "keyword_help": [
+      "HELP? The only help you need is PROPANE!", 
+      "Have you tried turning it off and on again?"
+    ],
+    "image_offline": [
+      "🔌 **Service Unavailable:** ComfyUI is currently offline. Please try again later."
+    ],
+    "image_processing": [
+      "🎨 **Processing Request:** *{prompt}*\n✨ Enhancing prompt and checking safety..."
+    ],
+    "image_denied": [
+      "🚫 **Request Denied:** I cannot generate that image due to safety guidelines (Too horny/Child Safety/CSAM Protection)."
+    ],
+    "image_generating": [
+      "🖌️ **Generating:** *{enhanced_prompt}*\n(This may take a moment...)"
+    ],
+    "image_success": [
+      "🖼️ **Result for:** *{prompt}*\n**Enhanced Prompt:** *{enhanced_prompt}*"
+    ],
+    "image_failed": [
+      "⚠️ **Generation Failed:** Could not connect to ComfyUI or an error occurred."
+    ],
+    "image_error": [
+      "❌ **Error:** Something went wrong: {error}"
+    ]
   }
 }

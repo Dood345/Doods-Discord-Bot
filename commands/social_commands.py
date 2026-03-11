@@ -22,14 +22,8 @@ class SocialCommands(commands.Cog):
             characters.remove('alexjones')
         return random.choice(characters)
     
-    @app_commands.command(name='roast', description="Roast a server member")
-    async def roast_member(self, interaction: discord.Interaction, member: discord.Member = None):
-        """Roast a server member (or yourself if no one specified)"""
-        await interaction.response.defer()
-        
-        if member is None:
-            member = interaction.user
-        
+    async def _do_roast(self, interaction: discord.Interaction, member: discord.Member):
+        """Core roast logic, shared by /roast and /roastme"""
         # Don't roast the bot itself
         if member == self.bot.user:
             await interaction.followup.send("🤖 Nice try, but I'm unroastable. I'm made of pure digital perfection!")
@@ -41,7 +35,6 @@ class SocialCommands(commands.Cog):
         
         # Try AI first
         if self.ai_handler.is_available():
-            # fetch history for context
             history = await self.bot.db.get_ai_history(member.id, interaction.guild.id if interaction.guild else None, limit=15)
             
             ai_response = await self.ai_handler.get_roast_response(character, member.display_name, chat_history=history)
@@ -51,6 +44,12 @@ class SocialCommands(commands.Cog):
         
         roast = self.bot.dialogue.get(character, 'roasts', fallback="{user} is... special.", user=member.mention)
         await interaction.followup.send(f"{char_info['name']}: {roast}")
+
+    @app_commands.command(name='roast', description="Roast a server member")
+    async def roast_member(self, interaction: discord.Interaction, member: discord.Member = None):
+        """Roast a server member (or yourself if no one specified)"""
+        await interaction.response.defer()
+        await self._do_roast(interaction, member or interaction.user)
     
     @app_commands.command(name='compliment', description="Give someone a compliment")
     async def compliment_member(self, interaction: discord.Interaction, member: discord.Member = None):
@@ -84,8 +83,8 @@ class SocialCommands(commands.Cog):
     @app_commands.command(name='roastme', description="Roast yourself")
     async def roast_self(self, interaction: discord.Interaction):
         """Roast yourself, you masochist"""
-        # Forward to main roast function
-        await self.roast_member(interaction, interaction.user)
+        await interaction.response.defer()
+        await self._do_roast(interaction, interaction.user)
 
 async def setup(bot):
     await bot.add_cog(SocialCommands(bot))
