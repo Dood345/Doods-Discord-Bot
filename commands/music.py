@@ -518,7 +518,7 @@ class MusicCommands(commands.Cog):
     @app_commands.command(name="list", description="List specific songs in the queue")
     async def list_queue(self, interaction: discord.Interaction):
         """Alias for queue"""
-        await self.view_queue(interaction)
+        await self.view_queue.callback(self, interaction)
 
     @app_commands.command(name="stop", description="Clear queue and disconnect")
     async def stop(self, interaction: discord.Interaction):
