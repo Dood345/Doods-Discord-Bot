@@ -198,6 +198,7 @@ async def seed_database():
         game_id = await db.add_game(
             title=game["title"],
             added_by=0, # System
+            guild_id=0, # Global
             # Note: Depending on your DB schema, tags might need to be a string or list
             tags=game["tags"], 
             min_players=game["min"],
