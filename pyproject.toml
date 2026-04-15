@@ -1,0 +1,29 @@
+[project]
+name = "doodlab-bot"
+version = "0.1.0"
+description = "Aperture Science Mainframe Discord Bot"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "discord.py @ git+https://github.com/Rapptz/discord.py@master",
+    "davey",
+    "python-dotenv==1.0.0",
+    "Flask==3.0.0",
+    "PyNaCl",
+    "aiohttp",
+    "qrcode[pil]",
+    "ping3",
+    "websocket-client",
+    "requests",
+    "yt-dlp",
+    "edge-tts",
+    "aiosqlite"
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "pytest-cov",
+    "pytest-mock"
+]

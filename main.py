@@ -6,6 +6,8 @@ import logging
 from datetime import datetime
 from dotenv import load_dotenv
 
+from utils.logger import setup_logging
+
 
 # Load environment variables FIRST before importing config
 load_dotenv()
@@ -15,6 +17,7 @@ from config import BotConfig
 from utils.ai_handler import AIHandler
 from utils.reaction_handler import ReactionHandler
 from utils.database import DatabaseHandler
+from utils.dialogue_manager import DialogueManager
 from commands.character_commands import CharacterCommands
 from commands.social_commands import SocialCommands
 from commands.game_commands import GameCommands
@@ -23,9 +26,11 @@ from commands.gift_commands import GiftCommands
 from commands.homelab_commands import HomeLabCommands
 from commands.image_cog import ImageCog
 from commands.music import MusicCommands
+from services.gift_service import GiftService
+from services.game_service import GameService
 
 # Setup logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+setup_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -50,8 +55,14 @@ class DoodsBot(commands.Bot):
         # Initialize Database
         self.db = DatabaseHandler()
         
+        # Initialize Service Layer abstractions
+        self.dialogue = DialogueManager()
+        
+        self.gift_service = GiftService(self.db)
+        self.game_service = GameService(self.db, self.dialogue)
+        
         self.ai_handler = AIHandler(self.db, self)
-        self.reaction_handler = ReactionHandler()
+        self.reaction_handler = ReactionHandler(self.dialogue)
         
         # User conversation histories for AI
         self.user_histories = {}
@@ -59,7 +70,7 @@ class DoodsBot(commands.Bot):
     async def setup_hook(self):
         """Called when the bot is starting up"""
         # Setup Database Tables
-        self.db.setup_tables()
+        await self.db.setup_tables()
         
         # Add cogs
         await self.add_cog(CharacterCommands(self))
