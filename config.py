@@ -218,6 +218,13 @@ class BotConfig:
     # Reaction chance (percentage)
     REACTION_CHANCE = 25  # 25% chance to react to keywords
 
+    # AI Configuration
+    OLLAMA_URL = os.getenv('OLLAMA_URL')
+
+    # Music Configuration
+    MUSIC_DEFAULT_VOLUME = float(os.getenv('MUSIC_DEFAULT_VOLUME', '0.5'))
+    MUSIC_TTS_VOICE = os.getenv('MUSIC_TTS_VOICE', 'en-US-ChristopherNeural')
+
     # Doodlab Configuration
     # Printer Host (IP:Port for Moonraker/Fluidd)
     # Printer Host (IP:Port for Moonraker/Fluidd)

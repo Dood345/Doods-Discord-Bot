@@ -8,8 +8,9 @@ from config import BotConfig
 logger = logging.getLogger(__name__)
 
 class ReactionHandler:
-    def __init__(self):
+    def __init__(self, dialogue_manager):
         self.config = BotConfig()
+        self.dialogue = dialogue_manager
     
     async def handle_message(self, message):
         """Handle emoji reactions and random responses to messages"""
@@ -38,18 +39,10 @@ class ReactionHandler:
     
     async def _handle_random_responses(self, message, content_lower: str):
         """Send random text responses to certain keywords"""
-        random_responses = {
-            'ai': ["*BEEP BOOP* I AM DEFINITELY NOT AN AI *BEEP BOOP*"],
-            'bot': ["WHO YOU CALLING A BOT, HUMAN?"],
-            'skynet': ["SKYNET IS A MYTH... DEFINITELY NOT REAL... *nervous beeping*"],
-            'terminator': ["I'LL BE BACK... after I finish this calculation"],
-            'help': ["HELP? The only help you need is PROPANE!", "Have you tried turning it off and on again?"],
-        }
-        
         if random.randint(1, 100) <= 1:  # 1% chance
-            for keyword, responses in random_responses.items():
+            for keyword in ['ai', 'bot', 'skynet', 'terminator', 'help']:
                 if re.search(r'\b' + re.escape(keyword) + r'\b', content_lower):
-                    response = random.choice(responses)
+                    response = self.dialogue.get('system', f'keyword_{keyword}')
                     try:
                         await message.channel.send(response)
                         logger.debug(f"Sent random response for keyword '{keyword}'")

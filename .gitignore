@@ -6,6 +6,7 @@ __pycache__/
 .Python
 *.log
 venv
+data/logs/
 *.db
 *.mp3
 *.bak
