@@ -42,13 +42,18 @@ Features iconic characters from King of the Hill, South Park, and more, powered 
 - Google Gemini API Key (Free)
 
 ### 2. Installation
+We use [Astral's `uv`](https://docs.astral.sh/uv/) for lightning-fast, deterministic dependency management.
+
 ```bash
 # Clone the repo
 git clone https://github.com/yourusername/Doods-Discord-Bot.git
 cd Doods-Discord-Bot
 
-# Install dependencies
-pip install -r requirements.txt
+# Install uv if you don't have it
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Sync the virtual environment
+uv sync
 ```
 
 ### 3. Configuration (.env)
@@ -85,21 +90,54 @@ LIDARR_API_KEY=your Lidarr_api_key_here
 ### 4. Customization (Make it Yours!)
 This bot is designed to be forked!
 - **Change Characters**: Edit `config.py` -> `CHARACTER_PROMPTS` to add your own personas.
-- **Change Services**: Edit `config.py` -> `HOMELAB_SERVICES` to list your own internal IPs for `/doodlab` to check.
+- **Server Contexts**: Edit `config.py` -> `SERVER_CONTEXTS` to change how the bot behaves based on which Discord Server it is in.
 - **Add Reactions**: Edit `config.py` -> `KEYWORD_REACTIONS` to make the bot react to your server's inside jokes.
 
 ### 5. Running
-```bash
-python main.py
-```
-*Note: On the first run, it will create `data/doodlab.db` automatically. You can also use this with github runners.*
+Use `uv run` to ensure the bot perfectly executes within the isolated environment.
 
-## 🐳 Docker Deployment
-A `docker-compose.yml` is included for easy deployment.
+**On Windows (Development):**
+If `uv` is not inherently in your system PATH after installation, route it explicitly through Python:
 ```bash
-docker-compose up -d --build
+python -m uv run python main.py
 ```
-Ensure you mount the `/app/data` volume to persist the database!
+
+**On Linux / Mac (or if Windows PATH is configured):**
+```bash
+uv run python main.py
+```
+*Note: On the first run, it will create `data/doodlab.db` automatically.*
+
+## 🧪 Testing
+
+The Aperture Science Mainframe includes a rigorous automated test suite covering the Core Data layer and the AI Handler logic. We mock external API requirements to ensure tests can be run anywhere.
+
+**On Windows (Development):**
+```bash
+# Run the test suite
+python -m uv run pytest tests/utils/ -v
+
+# Run the test suite and generate a coverage report
+python -m uv run pytest tests/utils/ -v --cov=utils
+```
+
+**On Linux / Mac:**
+```bash
+# Run the test suite
+uv run pytest tests/utils/ -v
+
+# Run the test suite and generate a coverage report
+uv run pytest tests/utils/ -v --cov=utils
+```
+
+## 🚀 Deployment (GitHub Runner)
+
+We rely on **GitHub Actions** and an internal self-hosted runner to automatically deploy to the homelab, eliminating the need for Docker containers.
+
+When you push to the `main` branch, `.github/workflows/deploy.yml` triggers:
+1. Uses `rsync` to synchronize your local network files (preserving your `.env` and `data/` directory).
+2. Updates `uv` and executes `uv sync` on the remote runner to instantaneously resolve newly added dependencies.
+3. Restarts the system service (`sudo systemctl restart discordBot.service`).
 
 ## 🔒 Security
 Homelab commands (`/printer`, `/request`, etc.) are **locked**.
