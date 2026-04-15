@@ -34,9 +34,9 @@ FFMPEG_OPTIONS = {
 class GuildPlayer:
     def __init__(self, channel_id: int):
         self.channel_id: int = channel_id
-        self.queue: list[tuple[str, str]] = []
-        self.history: list[tuple[str, str]] = []
-        self.current_track: tuple[str, str] | None = None
+        self.queue: list[tuple[str, str, str]] = []
+        self.history: list[tuple[str, str, str]] = []
+        self.current_track: tuple[str, str, str] | None = None
         self.start_time: float | None = None
         self.pause_start_time: float | None = None
         self.seek_position: float | None = None
@@ -90,27 +90,28 @@ class MusicCommands(commands.Cog):
         if not guild: return "No active guild."
 
         status_reports = []
+        vc = guild.voice_client
         
-        # Check all voice channels in the guild
-        for channel in guild.voice_channels:
-            cid = channel.id
+        # Verify bot is actually connected and has a channel
+        if vc and getattr(vc, 'channel', None):
+            cid = vc.channel.id
             player = self.players.get(cid)
-            if not player:
-                continue
             
-            # 1. Check Now Playing
-            current = player.current_track
-            queue = player.queue
-            
-            if current:
-                title = current[1]
-                status = f"🔊 In {channel.name}: Playing '{title}'"
-                if queue:
-                    status += f" (with {len(queue)} more in queue)"
-                status_reports.append(status)
-            elif queue:
-                # Not playing but has queue? (Paused or stopped but not cleared)
-                status_reports.append(f"⏱️ In {channel.name}: {len(queue)} tracks queued (Formatted/Paused)")
+            if player:
+                current = player.current_track
+                queue = player.queue
+                
+                # Check actual playback status to avoid ghosts
+                if current and (vc.is_playing() or vc.is_paused()):
+                    title = current[1]
+                    uploader = current[2]
+                    status = f"🔊 In {vc.channel.name}: Playing '{title}' by {uploader}"
+                    if queue:
+                        status += f" (with {len(queue)} more in queue)"
+                    status_reports.append(status)
+                elif queue:
+                    # Not playing but has queue? (Paused or stopped but not cleared)
+                    status_reports.append(f"⏱️ In {vc.channel.name}: {len(queue)} tracks queued (Formatted/Paused)")
         
         if not status_reports:
             return "Nothing is currently playing in this facility."
@@ -152,12 +153,12 @@ class MusicCommands(commands.Cog):
              # And don't save to history yet
              current_data = player.current_track
              if current_data:
-                 url, title = current_data
+                 url, title, uploader = current_data
              else:
                  # Weird state, fallback to queue
                  if queue:
-                     url, title = queue.pop(0)
-                     player.current_track = (url, title)
+                     url, title, uploader = queue.pop(0)
+                     player.current_track = (url, title, uploader)
                  else:
                      await self.bot.change_presence(activity=discord.Game(name="Science | /help"))
                      return
@@ -169,8 +170,8 @@ class MusicCommands(commands.Cog):
                 history.append(current)
                 if len(history) > 20: history.pop(0)
 
-            url, title = queue.pop(0)
-            player.current_track = (url, title)
+            url, title, uploader = queue.pop(0)
+            player.current_track = (url, title, uploader)
         else:
             player.current_track = None
             await self.bot.change_presence(activity=discord.Game(name="Science | /help"))
@@ -368,20 +369,23 @@ class MusicCommands(commands.Cog):
                 if info.get('_type') == 'playlist':
                     for entry in info['entries']:
                          if entry:
-                            added_songs.append((entry['url'], entry['title']))
+                            uploader = entry.get('uploader', 'Unknown Artist')
+                            added_songs.append((entry['url'], entry['title'], uploader))
                     
                     queue_len = len(added_songs)
                     await msg.edit(content=f"📝 **Playlist Queued:** Added {queue_len} tracks from *{info['title']}*.")
                 else:
                     entry = info['entries'][0]
-                    added_songs.append((entry['url'], entry['title']))
+                    uploader = entry.get('uploader', 'Unknown Artist')
+                    added_songs.append((entry['url'], entry['title'], uploader))
                     if is_direct_link:
-                        await msg.edit(content=f"🎵 **Added:** {entry['title']}")
+                        await msg.edit(content=f"🎵 **Added:** {entry['title']} by {uploader}")
                     else:
-                        await msg.edit(content=f"🎵 **Found:** {entry['title']}")
+                        await msg.edit(content=f"🎵 **Found:** {entry['title']} by {uploader}")
             else:
-                added_songs.append((info['url'], info['title']))
-                await msg.edit(content=f"🎵 **Added:** {info['title']}")
+                uploader = info.get('uploader', 'Unknown Artist')
+                added_songs.append((info['url'], info['title'], uploader))
+                await msg.edit(content=f"🎵 **Added:** {info['title']} by {uploader}")
 
             # 4. Add to Queue
             if not added_songs:
@@ -451,7 +455,8 @@ class MusicCommands(commands.Cog):
         vc.stop()
         
         title = last_track[1]
-        await interaction.response.send_message(f"⏮️ **Rewinding.** Playing previous track: {title}")
+        uploader = last_track[2]
+        await interaction.response.send_message(f"⏮️ **Rewinding.** Playing previous track: {title} by {uploader}")
 
     @app_commands.command(name="skip", description="Vote to skip the current track")
     async def skip(self, interaction: discord.Interaction) -> None:
@@ -487,11 +492,11 @@ class MusicCommands(commands.Cog):
             await interaction.response.send_message("The queue is empty. Silence is inefficient.")
             return
 
-        current_title = current[1] if current else "Nothing"
+        current_title = f"{current[1]} by {current[2]}" if current else "Nothing"
         
         desc = f"**Now Playing:** {current_title}\n\n**Up Next:**\n"
-        for i, (url, title) in enumerate(list(queue)[:10], 1):
-            desc += f"`{i}.` {title}\n"
+        for i, (url, title, uploader) in enumerate(list(queue)[:10], 1):
+            desc += f"`{i}.` {title} by {uploader}\n"
         
         if len(queue) > 10:
             desc += f"*...and {len(queue)-10} more.*"
@@ -508,12 +513,19 @@ class MusicCommands(commands.Cog):
             
         channel_id = vc.channel.id
         player = self.players.get(channel_id)
-        if player and player.queue:
+        if player:
             count = len(player.queue)
             player.queue.clear()
-            await interaction.response.send_message(f"🗑️ **Queue Cleared.** Removed {count} upcoming tracks.")
+            player.current_track = None
+            if vc.is_playing() or vc.is_paused():
+                vc.stop()
+            
+            if count > 0:
+                await interaction.response.send_message(f"🗑️ **Testing Halted.** Cleared {count} upcoming tracks and stopped the current track.")
+            else:
+                await interaction.response.send_message("🗑️ **Testing Halted.** Stopped the current track.")
         else:
-            await interaction.response.send_message("Queue is already empty.", ephemeral=True)
+            await interaction.response.send_message("The testing queue is already empty.", ephemeral=True)
 
     @app_commands.command(name="list", description="List specific songs in the queue")
     async def list_queue(self, interaction: discord.Interaction) -> None:
@@ -535,6 +547,10 @@ class MusicCommands(commands.Cog):
             # Clear state for this channel
             if channel:
                 channel_id = channel.id
+                player = self.players.get(channel_id)
+                if player:
+                    player.queue.clear()
+                    player.current_track = None
                 self.players.pop(channel_id, None)
              
             vc.stop()

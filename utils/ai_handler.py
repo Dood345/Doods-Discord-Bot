@@ -1,7 +1,7 @@
 """AI handling utilities for the Discord bot"""
 
 import os
-from google import genai
+import aiohttp
 import logging
 from typing import Optional, Dict, List, Tuple
 from config import BotConfig
@@ -14,23 +14,14 @@ class AIHandler:
         self.config = BotConfig()
         self.db = db_handler
         self.bot = bot
-        self.model_name = 'gemini-2.5-flash'
+        self.model_name = "gemma4:e2b"
+        self.ollama_url = self.config.OLLAMA_URL + "/api/generate"
         self.client = self._setup_ai()
     
     def _setup_ai(self):
-        """Initialize Gemini AI"""
-        api_key = os.getenv('GEMINI_API_KEY')
-        if api_key:
-            try:
-                client = genai.Client(api_key=api_key)
-                logger.info("AI client initialized successfully")
-                return client
-            except Exception as e:
-                logger.error(f"Failed to initialize AI model: {e}")
-                return None
-        else:
-            logger.warning("GEMINI_API_KEY not found - AI features disabled")
-            return None
+        """Initialize Ollama AI"""
+        logger.info(f"Ollama AI initialized for {self.model_name} at {self.ollama_url}")
+        return True
 
     def _get_persona_system_prompt(self) -> str:
         """Get the unified system prompt for Cave Johnson"""
@@ -47,7 +38,7 @@ class AIHandler:
         1. FIRST AND FOREMOST, answer the user's prompt intelligently and directly. Do not get so lost in character that you fail to help.
         2. Once the helpful answer is ready, wrap it in your trademark blustery Cave Johnson flavor.
         3. Be slightly unhinged but useful.
-        4. Keep responses under 350 characters unless detailed technical help is required then you can use 450 characters.
+        4. Keep responses under 350 characters unless detailed technical help is required then you can use 550 characters.
         5. AVOID overuse of "We've got science to do", "Visual Data", "Hot plastic soup", or "Why? Why not?" tropes. Avoid overuse of "Cave Johnson, out!"
         6. Use varied funny corporate jargon (e.g., "Quantum synergy", "Fiscal responsibility", "Bean counters").
         """
@@ -55,6 +46,18 @@ class AIHandler:
     def is_available(self) -> bool:
         """Check if AI is available"""
         return self.client is not None
+
+    async def _generate(self, prompt: str) -> str:
+        async with aiohttp.ClientSession() as session:
+            payload = {
+                "model": self.model_name,
+                "prompt": prompt,
+                "stream": False
+            }
+            async with session.post(self.ollama_url, json=payload) as resp:
+                resp.raise_for_status()
+                data = await resp.json()
+                return data.get("response", "")
     
     async def get_character_response(self, character: str, user_input: str) -> Optional[str]:
         """Get AI response for a specific character"""
@@ -63,8 +66,8 @@ class AIHandler:
         
         try:
             prompt = f"{self.config.CHARACTER_PROMPTS[character]}\n\nUser said: '{user_input}'\n\nRespond in character:"
-            response = await asyncio.to_thread(self.client.models.generate_content, model=self.model_name, contents=prompt)
-            return response.text.strip()
+            response_text = await self._generate(prompt)
+            return response_text.strip()
         except Exception as e:
             logger.error(f"AI character response error for {character}: {e}")
             return None
@@ -145,14 +148,26 @@ class AIHandler:
             
             # Context: Music Status
             music_context = ""
-            if self.bot and guild_id:
-                music_cog = self.bot.get_cog("MusicCommands")
-                if music_cog:
-                    # Retrieve comprehensive status for the server
-                    guild = self.bot.get_guild(guild_id)
-                    if guild:
-                        status_str = music_cog.get_music_status(guild)
-                        music_context = f"CURRENT FACILITY MUSIC STATUS:\n{status_str}\nIf the user asks what is playing, report this exact status."
+            
+            # --- MUSIC RAG TRIGGER ---
+            music_keywords = {'playing', 'song', 'music', 'track', 'tune', 'audio', 'listening', 'singer', 'band', 'artist'}
+            music_intents = {'what', 'who', 'current', 'whats', "what's", 'which', 'tell'}
+            
+            has_music_target = any(word in msg_lower for word in music_keywords)
+            has_music_intent = any(word in msg_lower for word in music_intents)
+            
+            direct_music_query = 'what is playing' in msg_lower or 'whats playing' in msg_lower or 'current song' in msg_lower or 'who is playing' in msg_lower
+            
+            if direct_music_query or (has_music_target and has_music_intent):
+                logger.info("Intent Confirmed: Music RAG Triggered.")
+                if self.bot and guild_id:
+                    music_cog = self.bot.get_cog("MusicCommands")
+                    if music_cog:
+                        # Retrieve comprehensive status for the server
+                        guild = self.bot.get_guild(guild_id)
+                        if guild:
+                            status_str = music_cog.get_music_status(guild)
+                            music_context = f"\n[DATABASE QUERY RESULT - MUSIC STATUS]\nCURRENT FACILITY MUSIC STATUS:\n{status_str}\nReport this exact status to the user to let them know what is currently playing.\n"
             
             # 3. Create prompt
             system_prompt = self._get_persona_system_prompt()
@@ -171,41 +186,8 @@ class AIHandler:
             2. Answer the prompt first, then add flavor."""
             
             # 4. Generate Response
-            response = await asyncio.to_thread(self.client.models.generate_content, model=self.model_name, contents=prompt)
-            
-            # SAFE RESPONSE HANDLING:
-            # Gemini sometimes returns blocked content or multi-part content that .text cannot handle directly.
-            try:
-                # 1. Check if we have a valid candidate
-                if not response.candidates:
-                    logger.warning("AI returned no candidates (Safety block?).")
-                    return "⚠️ **Cave Johnson:** [Safety Protocols Activated] I can't say that. The lawyers are watching."
-                
-                # 2. Check safety ratings of the first candidate
-                candidate = response.candidates[0]
-                if candidate.finish_reason != 1: # 1 = STOP (Normal)
-                     # 3 = SAFETY, 4 = RECITATION
-                     logger.warning(f"AI Response blocked. Reason: {candidate.finish_reason}")
-                     
-                     # Try to access text anyway for safety blocks (sometimes it works), otherwise fallback
-                
-                # 3. Robust Text Extraction
-                if hasattr(response, 'text'):
-                     response_text = response.text.strip()
-                elif candidate.content.parts:
-                     response_text = " ".join([part.text for part in candidate.content.parts]).strip()
-                else:
-                     response_text = "⚠️ **Cave Johnson:** [Data Corruption] The lab boys messed up the transmission."
-
-            except ValueError:
-                # This catches the "The `response.text` quick accessor only works..." error
-                # If we get here, it's definitely a multi-part message that .text failed on.
-                try:
-                    parts = response.candidates[0].content.parts
-                    response_text = "".join([p.text for p in parts]).strip()
-                except Exception as e:
-                    logger.error(f"Failed to parse complex AI response: {e}")
-                    response_text = "⚠️ **Cave Johnson:** [System Error] Aperture Science requires you to try that again."
+            response_text = await self._generate(prompt)
+            response_text = response_text.strip()
 
             # 5. Save to DB (User message AND Bot response)
             await self.db.add_ai_message(user_id, guild_id, "user", message)
@@ -261,8 +243,8 @@ class AIHandler:
             else:
                 prompt = base_prompt
 
-            response = await asyncio.to_thread(self.client.models.generate_content, model=self.model_name, contents=prompt)
-            return response.text.strip()
+            response_text = await self._generate(prompt)
+            return response_text.strip()
             
         except Exception as e:
             logger.error(f"AI roast error for {character}: {e}")
@@ -311,8 +293,8 @@ class AIHandler:
             else:
                 prompt = base_prompt
 
-            response = await asyncio.to_thread(self.client.models.generate_content, model=self.model_name, contents=prompt)
-            return response.text.strip()
+            response_text = await self._generate(prompt)
+            return response_text.strip()
             
         except Exception as e:
             logger.error(f"AI compliment error for {character}: {e}")
@@ -330,8 +312,8 @@ class AIHandler:
             else:
                 prompt = f"{system_prompt}\n\nThe user wants a beer recommendation. Give them a recommendation in character as Cave Johnson. Perhaps relate it to testing or science."
             
-            response = await asyncio.to_thread(self.client.models.generate_content, model=self.model_name, contents=prompt)
-            return response.text.strip()
+            response_text = await self._generate(prompt)
+            return response_text.strip()
             
         except Exception as e:
             logger.error(f"AI beer recommendation error: {e}")
@@ -368,10 +350,10 @@ class AIHandler:
             
             prompt = f"{system_instruction}\n\nInput: \"{user_prompt}\"\nOutput:"
             
-            response = await asyncio.to_thread(self.client.models.generate_content, model=self.model_name, contents=prompt)
-            result = response.text.strip()
+            result = await self._generate(prompt)
+            result = result.strip()
             
-            # Remove quotes if Gemini adds them
+            # Remove quotes if Ollama adds them
             if result.startswith('"') and result.endswith('"'):
                 result = result[1:-1]
                 
