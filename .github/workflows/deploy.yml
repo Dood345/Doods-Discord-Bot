@@ -36,4 +36,5 @@ jobs:
         $HOME/.local/bin/uv sync --no-dev
 
     - name: Restart Service
+      # Reload the bot so it reads the new code and the existing .env
       run: sudo systemctl restart discordBot.service
