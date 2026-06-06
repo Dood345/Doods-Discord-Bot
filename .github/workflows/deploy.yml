@@ -14,13 +14,6 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Deploy Code (Preserve data)
-      # rsync flags:
-      # -a : Archive mode (keep permissions/dates)
-      # -v : Verbose
-      # --delete : Remove old files that were deleted from git (keeps folder clean)
-      # --exclude '.env' : CRITICAL! Do not delete or overwrite the local secrets file
-      # --exclude 'data' : CRITICAL! Do not delete the database folder
-      # --exclude 'venv' : Do not delete the python libraries
       run: |
         rsync -av --delete \
           --exclude='.env' \
@@ -32,12 +25,15 @@ jobs:
 
     - name: Update Dependencies
       run: |
-        if [ ! -f "$HOME/.cargo/bin/uv" ]; then
+        # CHANGED .cargo to .local here
+        if [ ! -f "$HOME/.local/bin/uv" ]; then
           curl -LsSf https://astral.sh/uv/install.sh | sh
         fi
         cd /home/dood345/discordBot/
         export UV_PROJECT_ENVIRONMENT=/home/dood345/discordBot/venv
-        $HOME/.cargo/bin/uv sync --no-dev
+        
+        # CHANGED .cargo to .local here
+        $HOME/.local/bin/uv sync --no-dev
 
     - name: Restart Service
       # Reload the bot so it reads the new code and the existing .env
