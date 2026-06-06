@@ -14,7 +14,7 @@ class AIHandler:
         self.config = BotConfig()
         self.db = db_handler
         self.bot = bot
-        self.model_name = "gemma4:e2b"
+        self.model_name = "gemma4:12b"
         self.ollama_url = self.config.OLLAMA_URL + "/api/generate"
         self.client = self._setup_ai()
     
