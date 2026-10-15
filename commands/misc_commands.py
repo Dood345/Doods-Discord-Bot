@@ -47,6 +47,20 @@ class MiscCommands(commands.Cog):
         msg = self.bot.dialogue.get('cave_johnson', 'ai_memory_wipe')
         await interaction.response.send_message(msg, ephemeral=True)
     
+    @app_commands.command(name='memory', description="See what Cave remembers about you")
+    async def memory(self, interaction: discord.Interaction):
+        """Show the user's saved facts and how much chat history is stored"""
+        facts = await self.bot.db.get_user_facts(interaction.user.id)
+        history = await self.bot.db.get_ai_history(interaction.user.id, None, limit=1000)
+        embed = discord.Embed(title="🗄️ Your Aperture Personnel File", color=0xf39c12)
+        embed.add_field(
+            name=f"Notes ({len(facts)}/{self.bot.db.MAX_USER_FACTS})",
+            value="\n".join(f"• {f}" for f in facts)[:1024] if facts else "Nothing yet. Tell Cave something worth remembering.",
+            inline=False)
+        embed.add_field(name="Chat history", value=f"{len(history)} stored messages (Cave reads the last 20)", inline=False)
+        embed.set_footer(text="/clearhistory wipes both.")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
     @app_commands.command(name='beer', description="Get a beer recommendation")
     async def beer_recommendation(self, interaction: discord.Interaction, preferences: str = None):
         """Get a beer recommendation, with AI power!"""

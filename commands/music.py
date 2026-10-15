@@ -7,6 +7,7 @@ import logging
 import os
 import edge_tts
 import time
+from urllib.parse import urlparse
 from config import BotConfig
 
 logger = logging.getLogger(__name__)
@@ -25,6 +26,8 @@ YDL_OPTIONS = {
         'node': {}
     },
 }
+
+YOUTUBE_HOSTS = {'youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be'}
 
 FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
@@ -280,6 +283,58 @@ class MusicCommands(commands.Cog):
         """Helper to fetch YouTube data asynchronously"""
         loop = self.bot.loop or asyncio.get_event_loop()
         return await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(YDL_OPTIONS).extract_info(target, download=False)) # type: ignore
+
+    # --- Chat (AI tool) entry points: one track at a time, no interaction object ---
+
+    async def resolve_track(self, query: str) -> tuple[str, str, str] | str:
+        """Find a single track for a search term or YouTube link. Returns (url, title, uploader) or an error string."""
+        query = query.strip()
+        if query.startswith(('http://', 'https://')):
+            # The bot runs inside the LAN and yt-dlp fetches any URL, so only allow YouTube links from chat
+            host = (urlparse(query).hostname or '').lower()
+            if host not in YOUTUBE_HOSTS:
+                return "Only YouTube links or search terms are allowed."
+            target = query
+        else:
+            target = f"ytsearch:{query}"
+
+        info = await self._fetch_youtube_data(target)
+        if not info:
+            return "No playable tracks found."
+        if 'entries' in info:
+            if target != f"ytsearch:{query}" and info.get('_type') == 'playlist':
+                return "That's a playlist. Use /play for playlists; I only queue single tracks from chat."
+            entries = [e for e in info['entries'] if e]
+            if not entries:
+                return "No playable tracks found."
+            info = entries[0]
+        return (info['url'], info['title'], info.get('uploader', 'Unknown Artist'))
+
+    async def enqueue_track(self, member: discord.Member, text_channel, track: tuple[str, str, str]) -> str:
+        """Queue a resolved track in the member's voice channel; joins voice if needed."""
+        if not member.voice or not member.voice.channel:
+            return "🎙️ You need to be in a voice channel for me to pipe audio at you."
+        guild = member.guild
+        target = member.voice.channel
+        vc = guild.voice_client
+        if vc and vc.channel and vc.channel.id != target.id:
+            if vc.is_playing() or vc.is_paused():
+                # Don't hijack a session already running in another channel
+                return f"🎙️ I'm already broadcasting in {vc.channel.name}. Join that channel or use /play."
+            await vc.move_to(target)
+            vc = guild.voice_client
+        elif not vc:
+            vc = await target.connect()
+
+        player = self.players.setdefault(target.id, GuildPlayer(target.id))
+        if isinstance(text_channel, discord.TextChannel):
+            player.notification_channel = text_channel
+        player.queue.append(track)
+
+        if not vc.is_playing() and not vc.is_paused():
+            await self.play_next(guild)
+            return f"🎵 Now playing **{track[1]}** by {track[2]}."
+        return f"🎵 Queued **{track[1]}** by {track[2]} (#{len(player.queue)} in line)."
 
     @app_commands.command(name="play-tts", description="Toggle the vocal announcement system")
     async def toggle_tts(self, interaction: discord.Interaction) -> None:

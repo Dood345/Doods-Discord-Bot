@@ -43,7 +43,7 @@ Each phase is one or more PRs, branch → `dev` → `main`. Each phase ends with
 - Build `utils/agent/` with a small tool registry: each tool = name, JSON schema, async handler, `requires_auth: bool`, `side_effect: bool`. Loop: call model → run requested tools → feed results back → repeat (max ~4 iterations, per-tool timeout) → final text.
 - Replace the keyword "RAG" blocks with tools.
 
-**1b. Starter tools** (each wraps an existing service/cog — no new business logic in the agent). Read-only ones ✅: `recommend_games`, `list_game_tags`, `now_playing`, `service_status`, `printer_status`, `download_queue`. Next PR: the side-effect tools below behind confirmation buttons (`queue_song` needs the music cog's logic pulled out of its interaction handlers first; `generate_image` needs file attachments in the loop).
+**1b. Starter tools** (each wraps an existing service/cog — no new business logic in the agent). Read-only ones ✅: `recommend_games`, `list_game_tags`, `now_playing`, `service_status`, `printer_status`, `download_queue`. Side-effect tools ✅ behind confirm cards: `add_game`, `queue_song` (#104), `search_media` + `request_media` (#105). Still open: `generate_image` (must reuse `/imagine`'s safety enhancer, run in the background, one at a time on the shared GPU), `rate_game`, `skip_song`.
 | Tool | Wraps | Gate |
 |---|---|---|
 | `recommend_games`, `search_games`, `add_game`, `rate_game` | `GameService` | — |
@@ -60,12 +60,12 @@ Each phase is one or more PRs, branch → `dev` → `main`. Each phase ends with
 - Side-effecting tools (requesting media, adding games, queueing music for everyone) post a Discord button confirmation instead of acting silently.
 - Per-user AI cooldown; log every tool call (name, args, user) at INFO.
 
-**1d. Better memory.**
+**1d. Better memory.** ✅ `user_facts` + `remember_fact` + `/memory` + `/clearhistory` wipes facts (#84). Still open: rolling summaries, embeddings.
 - Rolling summary: when history exceeds N turns, summarize older turns into a per-user summary row instead of dropping them.
 - `user_facts` table ("likes Valheim", "hates horror games") written via `remember_fact`, shown in the system prompt. `/clearhistory` wipes facts too; add `/memory` to show what Cave knows about you (privacy policy already promises deletion).
 - Optional later: Ollama embeddings for semantic recall over old conversations.
 
-**1e. Feel.** Stream the response by editing the reply message as tokens arrive; show "Cave is consulting the lab boys…" while tools run.
+**1e. Feel.** (not started) Stream the response by editing the reply message as tokens arrive; show "Cave is consulting the lab boys…" while tools run.
 
 Deliverable also includes the `add-ai-tool` skill (written once the registry's real shape exists).
 

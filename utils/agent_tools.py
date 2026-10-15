@@ -3,7 +3,11 @@
 Tool output is read back to the user in a (possibly public) channel: never include IPs, hostnames or keys.
 """
 
+import discord
+
 from utils.agent import Tool, ToolContext, ToolRegistry
+from utils.auth import is_authorized
+from utils.confirm import post_confirmation
 
 
 async def _recommend_games(ctx: ToolContext, players: int = 0, tag: str = None) -> str:
@@ -53,6 +57,111 @@ async def _download_queue(ctx: ToolContext) -> str:
     return "\n".join(lines)
 
 
+def _to_int(value, default: int) -> int:
+    try:
+        return max(1, min(int(value), 100))
+    except (TypeError, ValueError):
+        return default
+
+
+# --- Side-effecting tools: each posts a confirm card; the action runs only when ctx.user clicks ---
+
+async def _add_game(ctx: ToolContext, title: str, min_players: int = 1, max_players: int = 4, tags: str = None) -> str:
+    title = " ".join(str(title).split())[:100]
+    if not title:
+        return "ERROR: a game title is required."
+    lo, hi = _to_int(min_players, 1), _to_int(max_players, 4)
+    lo, hi = min(lo, hi), max(lo, hi)
+    tags = str(tags)[:200] if tags else None
+    guild_id, user_id = ctx.guild.id, ctx.user.id
+
+    async def action(interaction):
+        _, msg = await ctx.bot.game_service.add_game(title, user_id, guild_id, lo, hi, tags=tags)
+        return msg
+
+    tag_text = f", tags: {tags}" if tags else ""
+    return await post_confirmation(
+        ctx, f"add_game:{title.lower()}",
+        f"🎮 {ctx.user.display_name}, add **{title}** ({lo}-{hi} players{tag_text}) to the game library?",
+        action, confirm_label="Add game")
+
+
+async def _search_media(ctx: ToolContext, query: str) -> str:
+    results = await ctx.bot.homelab_service.search_media(str(query)[:100])
+    if results is None:
+        return "ERROR: the media server (Overseerr) is not responding right now. Nothing was searched or requested."
+    if not results:
+        return f"No movies or shows found for '{query}'."
+    return "Search results (use tmdb_id + media_type with request_media):\n" + "\n".join(
+        f"- {r['title']} ({r['year']}) [{r['media_type']}] tmdb_id={r['tmdb_id']}" for r in results)
+
+
+async def _request_media(ctx: ToolContext, tmdb_id: int, media_type: str) -> str:
+    media_type = str(media_type).lower()
+    if media_type not in ("movie", "tv"):
+        return "ERROR: media_type must be 'movie' or 'tv'."
+    try:
+        tmdb_id = int(tmdb_id)
+    except (TypeError, ValueError):
+        return "ERROR: tmdb_id must be a number from search_media."
+    details = await ctx.bot.homelab_service.media_details(tmdb_id, media_type)
+    if details is None:
+        return "ERROR: couldn't find that title. Run search_media first and use its tmdb_id."
+
+    async def check(interaction):
+        # Re-check on click: clearance can change and only the human who clicked counts
+        if not is_authorized(interaction.user):
+            return "❌ **Access Denied**: Authorized Personnel Only ⛔"
+        return None
+
+    async def action(interaction):
+        status, title = await ctx.bot.homelab_service.request_media(tmdb_id, media_type)
+        return {"requested": f"✅ Requested **{title}**! The download goblins have been dispatched.",
+                "duplicate": f"⚠️ **{title}** is already requested."}.get(status, "❌ The request failed. Check the logs.")
+
+    kind = "movie" if media_type == "movie" else "TV show"
+    return await post_confirmation(
+        ctx, f"request_media:{media_type}:{tmdb_id}",
+        f"📥 {ctx.user.display_name}, request the {kind} **{details['title']} ({details['year']})**?",
+        action, check=check, confirm_label="Request")
+
+
+async def _queue_song(ctx: ToolContext, query: str) -> str:
+    music = ctx.bot.get_cog("MusicCommands")
+    if music is None:
+        return "The music system is offline."
+    if not isinstance(ctx.user, discord.Member) or not ctx.user.voice or not ctx.user.voice.channel:
+        return "ERROR: the user must join a voice channel first."
+    track = await music.resolve_track(str(query)[:200])
+    if isinstance(track, str):
+        return f"ERROR: {track}"
+    url, title, uploader = track
+
+    async def check(interaction):
+        member = interaction.guild.get_member(interaction.user.id) if interaction.guild else None
+        if not member or not member.voice or not member.voice.channel:
+            return "🎙️ Join a voice channel first, then click again... oh wait, you can't. Ask me again."
+        return None
+
+    async def action(interaction):
+        member = interaction.guild.get_member(interaction.user.id)
+        return await music.enqueue_track(member, interaction.channel, track)
+
+    return await post_confirmation(
+        ctx, f"queue_song:{url}",
+        f"🎵 {ctx.user.display_name}, queue **{title}** by {uploader}?",
+        action, check=check, confirm_label="Queue it")
+
+
+async def _remember_fact(ctx: ToolContext, fact: str) -> str:
+    status = await ctx.bot.db.add_user_fact(ctx.user.id, str(fact))
+    return {
+        "added": "Saved to this user's permanent file.",
+        "duplicate": "Already in this user's file.",
+        "full": "This user's file is full (20 notes). They can wipe it with /clearhistory.",
+    }.get(status, "ERROR: couldn't save that.")
+
+
 def build_cave_tools() -> ToolRegistry:
     return ToolRegistry([
         Tool(
@@ -94,5 +203,54 @@ def build_cave_tools() -> ToolRegistry:
             description="List active media downloads in Sonarr, Radarr and Lidarr.",
             handler=_download_queue,
             requires_auth=True,
+        ),
+        Tool(
+            name="add_game",
+            description="Add a game to this server's game library (the user confirms with a button).",
+            handler=_add_game,
+            parameters={"type": "object", "properties": {
+                "title": {"type": "string"},
+                "min_players": {"type": "integer"},
+                "max_players": {"type": "integer"},
+                "tags": {"type": "string", "description": "Comma-separated tags, e.g. 'survival, co-op'"},
+            }, "required": ["title"]},
+            requires_guild=True,
+        ),
+        Tool(
+            name="queue_song",
+            description="Queue one song in the user's voice channel from a search term or YouTube link "
+                        "(the user confirms with a button). Not for playlists.",
+            handler=_queue_song,
+            parameters={"type": "object", "properties": {
+                "query": {"type": "string", "description": "Song search, e.g. 'Still Alive Jonathan Coulton'"},
+            }, "required": ["query"]},
+            requires_guild=True,
+            timeout=45,  # yt-dlp lookups can be slow
+        ),
+        Tool(
+            name="search_media",
+            description="Search movies and TV shows on the media server. Use before request_media.",
+            handler=_search_media,
+            parameters={"type": "object", "properties": {"query": {"type": "string"}}, "required": ["query"]},
+            requires_auth=True,
+        ),
+        Tool(
+            name="request_media",
+            description="Request a movie or TV show for download (the user confirms with a button). "
+                        "Use a tmdb_id and media_type from search_media.",
+            handler=_request_media,
+            parameters={"type": "object", "properties": {
+                "tmdb_id": {"type": "integer"},
+                "media_type": {"type": "string", "enum": ["movie", "tv"]},
+            }, "required": ["tmdb_id", "media_type"]},
+            requires_auth=True,
+            timeout=20,
+        ),
+        Tool(
+            name="remember_fact",
+            description="Save a short note about the current user to remember in future chats "
+                        "(e.g. 'loves Valheim', 'hates horror games').",
+            handler=_remember_fact,
+            parameters={"type": "object", "properties": {"fact": {"type": "string"}}, "required": ["fact"]},
         ),
     ])
