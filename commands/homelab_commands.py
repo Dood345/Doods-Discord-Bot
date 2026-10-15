@@ -5,8 +5,8 @@ import aiohttp
 import asyncio
 import logging
 import io
-from ping3 import ping
 from config import BotConfig
+from utils.auth import is_authorized
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +73,7 @@ class RequestView(discord.ui.View):
 class HomeLabCommands(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.homelab = bot.homelab_service
         self.update_printer_status.start()
         
     def cog_unload(self):
@@ -80,11 +81,7 @@ class HomeLabCommands(commands.Cog):
 
     async def check_auth(self, interaction: discord.Interaction) -> bool:
         """Check if user is authorized to use homelab commands"""
-        user_id = interaction.user.id
-        username = interaction.user.name.lower()
-        
-        # Check ID match or Username match
-        if user_id == BotConfig.OWNER_ID or username in BotConfig.ALLOWED_USERS:
+        if is_authorized(interaction.user):
             return True
             
         await interaction.response.send_message("❌ **Access Denied**: Authorized Personnel Only ⛔", ephemeral=True)
@@ -131,14 +128,10 @@ class HomeLabCommands(commands.Cog):
         )
         
         results = []
-        for service in BotConfig.HOMELAB_SERVICES:
-            try:
-                response_time = ping(service['ip'], timeout=1)
-                status = "🟢 Online" if response_time else "🔴 Offline"
-                ping_ms = f"({response_time*1000:.0f}ms)" if response_time else ""
-                results.append(f"**{service['name']}** ({service['ip']}): {status} {ping_ms}")
-            except Exception:
-                results.append(f"**{service['name']}** ({service['ip']}): 🔴 Offline (Error)")
+        for svc in await self.homelab.service_status():
+            status = "🟢 Online" if svc["online"] else "🔴 Offline"
+            ping_ms = f"({svc['ms']}ms)" if svc["online"] else ""
+            results.append(f"**{svc['name']}**: {status} {ping_ms}")
         
         embed.description = "\n".join(results)
         await interaction.followup.send(embed=embed)
@@ -286,52 +279,13 @@ class HomeLabCommands(commands.Cog):
         embed = discord.Embed(title="📉 Download Queue", color=0x3498db)
         activities = []
         
-        # Helper to check queue
-        async def check_queue(name, url, key):
-            if not url or not key: return []
-            try:
-                async with aiohttp.ClientSession() as session:
-                    # Sonarr/Radarr use /api/v3/queue, Lidarr uses /api/v1/queue
-                    api_ver = "v1" if "lidarr" in name.lower() else "v3"
-                    endpoint = f"{url}/api/{api_ver}/queue"
-                    
-                    async with session.get(endpoint, headers={'X-Api-Key': key}, timeout=5) as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            records = data.get('records', [])
-                            return [(name, r) for r in records]
-            except Exception:
-                return []
-            return []
-
-        # Gather all queues concurrently
-        tasks = [
-            check_queue("📺 Sonarr", BotConfig.SONARR_URL, BotConfig.SONARR_API_KEY),
-            check_queue("🎬 Radarr", BotConfig.RADARR_URL, BotConfig.RADARR_API_KEY),
-            check_queue("🎵 Lidarr", BotConfig.LIDARR_URL, BotConfig.LIDARR_API_KEY)
-        ]
-        
-        results = await asyncio.gather(*tasks)
-        
-        flat_results = [item for sublist in results for item in sublist]
+        flat_results = await self.homelab.download_queue()
         
         if not flat_results:
             embed.description = "✅ No active downloads right now."
         else:
-            for source, record in flat_results:
-                title = record.get('title', 'Unknown')
-                status = record.get('status', 'Unknown')
-                
-                # Try to get progress
-                size = record.get('size', 0)
-                sizeleft = record.get('sizeleft', 0)
-                if size > 0:
-                    percent = 100 - (sizeleft / size * 100)
-                    progress = f"{percent:.1f}%"
-                else:
-                    progress = "Importing" if status == 'Completed' else "Unknown"
-
-                activities.append(f"**{source}**: {title}\n└ `{status}` ({progress})")
+            for item in flat_results:
+                activities.append(f"**{item['source']}**: {item['title']}\n└ `{item['status']}` ({item['progress']})")
             
             embed.description = "\n\n".join(activities)
             

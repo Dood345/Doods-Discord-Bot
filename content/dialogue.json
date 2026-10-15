@@ -56,6 +56,11 @@
       "Duff Beer - it's what Homer would drink",
       "Propane-flavored beer (Hank Hill's dream)",
       "Something that pairs well with conspiracy theories"
+    ],
+    "ai_cooldown": [
+      "🎙️ One experiment at a time, test subject! The lab boys are still mopping up your last one.",
+      "🎙️ Whoa there. The science furnace needs a few seconds to cool between questions.",
+      "🎙️ Patience, volunteer. Even genius has a queue."
     ]
   },
   "hank": {
@@ -216,7 +221,7 @@
       "I'LL BE BACK... after I finish this calculation"
     ],
     "keyword_help": [
-      "HELP? The only help you need is PROPANE!", 
+      "HELP? The only help you need is PROPANE!",
       "Have you tried turning it off and on again?"
     ],
     "image_offline": [

@@ -6,7 +6,7 @@ from utils.ai_handler import AIHandler
 async def test_get_chat_response(temp_db, mock_config, mocker):
     """
     Test the flow of generating an AI response without hitting the real Ollama server.
-    We mock the handler's `_generate` call.
+    We mock the handler's `_chat` call.
     """
     # Initialize the handler. It takes (db, bot) but we don't need a real bot here.
     # Pass None for the bot since most AI handler methods only use the db wrapper here.
@@ -16,7 +16,8 @@ async def test_get_chat_response(temp_db, mock_config, mocker):
     
     # No OLLAMA_URL in the test environment, so the handler starts disabled; force it on.
     handler.client = True
-    mocker.patch.object(handler, '_generate', AsyncMock(return_value="Mocked AI Response: Science!"))
+    # Chat goes through the agent loop on /api/chat; a reply without tool_calls is the final answer.
+    mocker.patch.object(handler, '_chat', AsyncMock(return_value={"content": "Mocked AI Response: Science!"}))
 
     # Add some dummy history to test the RAG building logic
     await temp_db.add_ai_message(user_id=1, guild_id=999, role="user", content="Hello AI")

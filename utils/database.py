@@ -361,8 +361,5 @@ class DatabaseHandler:
                 return result_text
                 
         except Exception as e:
-            import traceback
-            with open("trace.txt", "w") as f:
-                traceback.print_exc(file=f)
-            logger.error(f"Recommendation failed: {e}")
+            logger.exception(f"Recommendation failed: {e}")
             return "DATABASE ERROR: The file cabinets are jammed."

@@ -28,6 +28,7 @@ from commands.image_cog import ImageCog
 from commands.music import MusicCommands
 from services.gift_service import GiftService
 from services.game_service import GameService
+from services.homelab_service import HomelabService
 
 # Setup logging
 setup_logging()
@@ -60,6 +61,7 @@ class DoodsBot(commands.Bot):
         
         self.gift_service = GiftService(self.db)
         self.game_service = GameService(self.db, self.dialogue)
+        self.homelab_service = HomelabService()
         
         self.ai_handler = AIHandler(self.db, self)
         self.reaction_handler = ReactionHandler(self.dialogue)
@@ -131,7 +133,10 @@ class DoodsBot(commands.Bot):
                             pass
                     # ---------------------------------
 
-                    response = await self.ai_handler.get_chat_response(message.author.id, content, guild_id, reply_context=reply_context)
+                    response = await self.ai_handler.get_chat_response(
+                        message.author.id, content, guild_id, reply_context=reply_context,
+                        user=message.author, guild=message.guild, channel=message.channel
+                    )
                     if response:
                         await message.reply(response)
                     else:

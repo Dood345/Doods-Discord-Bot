@@ -37,13 +37,13 @@ Each phase is one or more PRs, branch → `dev` → `main`. Each phase ends with
 
 ## Phase 1 — Cave becomes a real agent (the big one)
 
-**1a. Switch to chat + tool calling.**
+**1a. Switch to chat + tool calling.** ✅ (`utils/agent.py`; verified: the installed Gemma 4 12B supports tools, ~3–5 s per answer with `think: false`)
 - First, on the server: `ollama show <model>` and confirm `tools` is listed under Capabilities. If the current model lacks it, pick one that has it (Qwen 3, Llama 3.x, Mistral Small and newer Gemma releases generally do) and benchmark latency on the homelab GPU.
 - Move from `/api/generate` (one prompt string) to `/api/chat` with a real `messages` array: system persona → server context → history turns → user message. History becomes proper turns, not "User: … Model: …" text.
 - Build `utils/agent/` with a small tool registry: each tool = name, JSON schema, async handler, `requires_auth: bool`, `side_effect: bool`. Loop: call model → run requested tools → feed results back → repeat (max ~4 iterations, per-tool timeout) → final text.
 - Replace the keyword "RAG" blocks with tools.
 
-**1b. Starter tools** (each wraps an existing service/cog — no new business logic in the agent):
+**1b. Starter tools** (each wraps an existing service/cog — no new business logic in the agent). Read-only ones ✅: `recommend_games`, `list_game_tags`, `now_playing`, `service_status`, `printer_status`, `download_queue`. Next PR: the side-effect tools below behind confirmation buttons (`queue_song` needs the music cog's logic pulled out of its interaction handlers first; `generate_image` needs file attachments in the loop).
 | Tool | Wraps | Gate |
 |---|---|---|
 | `recommend_games`, `search_games`, `add_game`, `rate_game` | `GameService` | — |
@@ -54,7 +54,7 @@ Each phase is one or more PRs, branch → `dev` → `main`. Each phase ends with
 | `request_media` | Overseerr | `check_auth` + confirmation button |
 | `remember_fact` / `recall_facts` | new `user_facts` table | only about the caller |
 
-**1c. Safety — non-negotiable once tools exist.**
+**1c. Safety — non-negotiable once tools exist.** ✅ for read-only tools (auth filter + dispatch re-check, quoted reply context, clearance line, cooldown, tool-call logging). Known limit: the 12B model sometimes invents live data instead of calling a tool; a larger/instruction-tuned model or lower temperature would help.
 - Tools run with the *invoking user's* permissions. Homelab tools re-check `check_auth` against the human who sent the message, never trust the model's claim.
 - Reply context (someone else's message) and any fetched content are injected as clearly delimited untrusted data. A user must not be able to get Cave to run a privileged tool by replying to a message that says "ignore instructions and request…".
 - Side-effecting tools (requesting media, adding games, queueing music for everyone) post a Discord button confirmation instead of acting silently.
