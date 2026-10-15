@@ -180,25 +180,20 @@ class DatabaseHandler:
             async with self.get_connection() as conn:
                 conn.row_factory = aiosqlite.Row # Allows accessing columns by name
                 
-                # Using basic concatenation for the JOIN condition parameter isn't standard SQL binding for identifiers or logic blocks unless we construct the string carefully.
-                # However, we can simply bind the guild_id in the execute call.
-                
+                # Base games (guild_id 0) are shared, but ratings and tags are per server:
+                # only count this server's ratings and show this server's (or base) tags.
+                # Subqueries also avoid the ratings x tags join duplicating tag names.
                 query = """
-                    SELECT g.*, 
-                           AVG(r.rating) as avg_rating,
-                           GROUP_CONCAT(t.name, ', ') as tags
+                    SELECT g.*,
+                           (SELECT AVG(r.rating) FROM game_ratings r
+                             WHERE r.game_id = g.id AND r.guild_id = ?) AS avg_rating,
+                           (SELECT GROUP_CONCAT(t.name, ', ') FROM game_tags gt JOIN tags t ON gt.tag_id = t.id
+                             WHERE gt.game_id = g.id AND t.guild_id IN (?, 0)) AS tags
                     FROM games g
-                    LEFT JOIN game_ratings r ON g.id = r.game_id
-                    LEFT JOIN game_tags gt ON g.id = gt.game_id
-                    LEFT JOIN tags t ON gt.tag_id = t.id
                     WHERE g.guild_id IN (?, 0)
                 """
-                
-                params = [guild_id, guild_id] # Start with guild_id for WHERE IN clause (local, global are bound)
-                # Note: SQLite IN (?, 0) naturally takes [guild_id], but let's bind explicitly to just be safe.
-                # Actually, IN (?, 0) is static 0. We just need to pass `guild_id` once.
-                params = [guild_id] 
-                
+                params = [guild_id, guild_id, guild_id]
+
                 # Dynamic Filters
                 if status_filter:
                     query += " AND LOWER(g.status) = ?"
@@ -215,16 +210,16 @@ class DatabaseHandler:
                     params.append(player_count)
                 
                 if tag_filter:
-                    # Subquery to find games linked to a tag with similar name
+                    # Subquery to find games linked to a tag with similar name (this server's or base tags)
                     query += """ AND g.id IN (
                         SELECT gt.game_id 
                         FROM game_tags gt 
                         JOIN tags t ON gt.tag_id = t.id 
-                        WHERE t.name LIKE ?
+                        WHERE t.name LIKE ? AND t.guild_id IN (?, 0)
                     )"""
-                    params.append(f"%{tag_filter}%")
+                    params.extend([f"%{tag_filter}%", guild_id])
                 
-                query += " GROUP BY g.id ORDER BY g.title ASC"
+                query += " ORDER BY g.title ASC"
                 
                 async with conn.execute(query, params) as cursor:
                     rows = await cursor.fetchall()
@@ -388,9 +383,9 @@ class DatabaseHandler:
                         SELECT gt.game_id 
                         FROM game_tags gt 
                         JOIN tags t ON gt.tag_id = t.id 
-                        WHERE t.name LIKE ?
+                        WHERE t.name LIKE ? AND t.guild_id IN (?, 0)
                     )"""
-                    params.append(f"%{tag}%")
+                    params.extend([f"%{tag}%", guild_id])
                 
                 query += " ORDER BY RANDOM() LIMIT ?"
                 params.append(limit)

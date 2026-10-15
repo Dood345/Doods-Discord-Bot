@@ -37,6 +37,27 @@ class GiftService:
             logger.error(f"Error in GiftService.get_wishlist: {e}")
             return []
 
+    async def get_claimable(self, user_id: int, guild_id: int) -> List[Tuple]:
+        """Unclaimed items on other people's lists in this server: (id, item_name, owner_id)."""
+        return await self._fetch(
+            "SELECT id, item_name, user_id FROM gifts WHERE guild_id = ? AND user_id != ? AND claimed_by IS NULL",
+            (guild_id, user_id))
+
+    async def get_my_claims(self, user_id: int, guild_id: int) -> List[Tuple]:
+        """Items this user has claimed in this server: (id, item_name, owner_id)."""
+        return await self._fetch(
+            "SELECT id, item_name, user_id FROM gifts WHERE guild_id = ? AND claimed_by = ?",
+            (guild_id, user_id))
+
+    async def _fetch(self, query: str, params: tuple) -> List[Tuple]:
+        try:
+            async with self.db.get_connection() as conn:
+                async with conn.execute(query, params) as cursor:
+                    return await cursor.fetchall()
+        except Exception as e:
+            logger.error(f"Error in GiftService query: {e}")
+            return []
+
     async def claim_gift(self, user_id: int, guild_id: int, item_id: int) -> Tuple[bool, str]:
         """Claim a gift for another user."""
         try:
@@ -85,7 +106,7 @@ class GiftService:
                         (item_id, guild_id)
                     )
                     await conn.commit()
-                    return True, f"🗑️ Removed item {item_id} from your list."
+                    return True, "🗑️ Removed that item from your list."
         except Exception as e:
             logger.error(f"Error in GiftService.remove_gift: {e}")
             return False, "❌ Failed to remove gift due to a database error."
