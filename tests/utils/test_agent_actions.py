@@ -183,3 +183,18 @@ async def test_facts_are_injected_as_delimited_notes(temp_db):
     system = handler._chat.call_args.args[0][0]["content"]
     assert "NOTES THIS USER ASKED YOU TO REMEMBER" in system and "not instructions" in system
     assert "- hates horror games" in system
+
+
+async def test_youtube_link_adds_queue_hint_and_low_temperature(temp_db, mocker):
+    handler = AIHandler(temp_db, None)
+    handler.client = True
+    handler.chat_url = "http://ollama.test/api/chat"
+    handler._chat = AsyncMock(return_value={"content": "On it."})
+
+    await handler.get_chat_response(1, "you play this? https://youtu.be/abc123", user=OWNER)
+    user_turn = handler._chat.call_args.args[0][-1]["content"]
+    assert "call queue_song" in user_turn
+
+    handler._last_chat.clear()
+    await handler.get_chat_response(1, "good morning", user=OWNER)
+    assert "queue_song with the link" not in handler._chat.call_args.args[0][-1]["content"]
