@@ -4,7 +4,21 @@ Where the bot is today: a solid cog-based discord.py bot with a service layer, a
 
 The goal: make Cave a real agent that can act inside the facility (games, music, images, homelab) safely, make the server more fun to hang out in, and modernize the plumbing so it's easy to keep extending.
 
-Each phase is one or more PRs, branch → `dev` → `main`. Each phase ends with the `ship-check` skill green. Kickoff prompts at the bottom can be pasted into a fresh Claude Code session.
+Each phase is one or more PRs, branch → `dev` → `main`. Each phase ends with the `ship-check` skill green. Kickoff prompts at the bottom can be pasted into a fresh Claude Code session. Reference the issue number in the PR (`Closes #104`) so GitHub closes it on merge.
+
+### Open issues → where they land
+
+| Issue | Ask | Phase |
+|---|---|---|
+| #104 | Cave queues songs from natural language | 1b `queue_song` tool |
+| #105 | Cave can query local media servers | 1b `media_queue` / Plex tools (`check_auth`) |
+| #106 | Cave can ping local devices | 1b `service_status` tool (`check_auth`) |
+| #84 | Small permanent memory per user | 1d `user_facts` |
+| #90 | Radio toggle: start radio from one song | 2 (music) |
+| #100 | Game list should work with the per-channel/guild system | 2 (games) — quick fix, can go first |
+| #103 | Adding a game by link auto-fills info (Steam/Epic) | 2 (games) + agent `add_game` tool |
+| #48 | Gift claim shows item IDs publicly | 2 — privacy fix, use ephemeral replies / select menus |
+| #69 | Send a link to add to the print queue instead of a file | 2 (homelab) |
 
 ---
 
@@ -15,10 +29,11 @@ Each phase is one or more PRs, branch → `dev` → `main`. Each phase ends with
 - [x] AI handler no longer crashes without `OLLAMA_URL`; AI tests mock Ollama instead of the dead Gemini client (27/27 green)
 - [x] CI: uv + Python 3.14 + pytest + privacy guard (the old job installed from a `requirements.txt` that didn't exist)
 - [x] Privacy Policy describes actual data handling (cross-server memory, reply context, logs, `/clearhistory`)
-- [ ] **Decide:** whether to rewrite git history (discussed privately)
-- [ ] Delete merged stale branches (all 10+ local/remote feature branches are fully merged into `main`)
+- [x] Git history rewritten and force-pushed
+- [x] Deleted merged stale branches (local and remote)
 - [ ] ToS §5 forbids copying/modifying the bot, which conflicts with the repo's open-source `LICENSE`. Pick one.
-- [ ] Move `model_name` to an `OLLAMA_MODEL` env var
+- [x] `OLLAMA_MODEL` env var (the hard-coded `gemma4:12b` didn't exist on the server, so AI chat was 404ing in prod); `think: false`
+- [x] `dialogue.json` moved to `content/` so it actually deploys (prod had been running without it)
 
 ## Phase 1 — Cave becomes a real agent (the big one)
 
@@ -80,7 +95,6 @@ Deliverable also includes the `add-ai-tool` skill (written once the registry's r
 
 - Nightly SQLite backup (`sqlite3 .backup`) with rotation on the server.
 - Deploy: health check after `systemctl restart`; auto-rollback to previous release dir if the bot isn't online in 60 s.
-- Ship `dialogue.json` changes: deploy currently excludes all of `data/`, so edits to the tracked `data/dialogue.json` never reach the server. Move tracked content (dialogue, personas) to `content/` and keep `data/` for runtime state only.
 - Parametrize the deploy path (`/home/<user>/discordBot`) via a repo variable.
 
 ---
@@ -99,7 +113,7 @@ Paste one into a fresh Claude Code session in this repo. Each assumes CLAUDE.md 
 > Implement Phase 1d–1e of docs/ROADMAP.md: rolling summaries, a user_facts table with remember/recall tools, /memory and an extended /clearhistory, and streamed replies. Update PrivacyPolicy.md for the new stored data. Run ship-check.
 
 **Phase 2 (pick one item per session)**
-> Implement "<item name>" from Phase 2 of docs/ROADMAP.md. Use the new-slash-command skill for any new command, put user-facing strings in data/dialogue.json in Cave's voice, and if the agent from Phase 1 exists, expose the feature as an AI tool too. Run ship-check.
+> Implement "<item name>" from Phase 2 of docs/ROADMAP.md. Use the new-slash-command skill for any new command, put user-facing strings in content/dialogue.json in Cave's voice, and if the agent from Phase 1 exists, expose the feature as an AI tool too. Run ship-check.
 
 **Phase 3 / 4**
 > Implement "<item name>" from Phase 3 (or 4) of docs/ROADMAP.md without changing user-visible behavior. Keep the diff focused; run ship-check.

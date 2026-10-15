@@ -19,5 +19,5 @@ On Windows use `python -m uv`; on Linux/macOS use `uv`.
 7. **Review.** If the diff is more than trivial and `bot-reviewer` hasn't run on it, run it.
 8. **Report** in this shape:
    - Checks: pass/fail list
-   - Manual steps before merging to `main`: env vars to add to the server's `.env`; private files to create under `data/` on the server (e.g. `data/server_contexts.json`); `data/dialogue.json` changes to copy over (deploy excludes `data/`); DB columns that need an `ALTER TABLE`
+   - Manual steps before merging to `main`: env vars to add to the server's `.env`; private files to create under `data/` on the server (e.g. `data/server_contexts.json`); DB columns that need an `ALTER TABLE`
    - After deploy: `!sync` if slash commands were added/renamed/changed

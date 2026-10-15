@@ -14,7 +14,7 @@ class AIHandler:
         self.config = BotConfig()
         self.db = db_handler
         self.bot = bot
-        self.model_name = "gemma4:12b"
+        self.model_name = self.config.OLLAMA_MODEL
         self.ollama_url = f"{self.config.OLLAMA_URL.rstrip('/')}/api/generate" if self.config.OLLAMA_URL else None
         self.client = self._setup_ai()
     
@@ -55,7 +55,9 @@ class AIHandler:
             payload = {
                 "model": self.model_name,
                 "prompt": prompt,
-                "stream": False
+                "stream": False,
+                # Reasoning models otherwise spend most of their tokens "thinking" and can leak it into replies
+                "think": False
             }
             async with session.post(self.ollama_url, json=payload) as resp:
                 resp.raise_for_status()

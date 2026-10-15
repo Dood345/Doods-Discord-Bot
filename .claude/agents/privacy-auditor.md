@@ -16,7 +16,7 @@ You audit the Doods-Discord-Bot repo, which is **public on GitHub** and auto-dep
 - Files that should be untracked: `.env`, `*.db`, cookies files, `.coverage`, logs, `data/server_contexts.json`
 
 ## Where real values are supposed to live
-`.env` (template: `.env.example`) and gitignored files under `data/` (e.g. `data/server_contexts.json`, template `data/server_contexts.example.json`). Example/template files may contain obvious placeholders like `123456789012345678`.
+`.env` (template: `.env.example`) and gitignored files under `data/` (e.g. `data/server_contexts.json`, template `data/server_contexts.example.json`). Example/template files may contain obvious placeholders (e.g. an all-sequential ID like `1234…`).
 
 ## Procedure
 1. Tracked tree: `git ls-files` for files that shouldn't be tracked; `git grep -nE` for the patterns above (exclude `uv.lock`).

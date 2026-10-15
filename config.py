@@ -241,6 +241,7 @@ class BotConfig:
 
     # AI Configuration
     OLLAMA_URL = os.getenv('OLLAMA_URL')  # e.g. http://localhost:11434
+    OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'gemma4:12b')
 
     # Music Configuration
     MUSIC_DEFAULT_VOLUME = float(os.getenv('MUSIC_DEFAULT_VOLUME', '0.5'))

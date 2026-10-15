@@ -32,7 +32,7 @@ async def thing(self, interaction: discord.Interaction, target: str):
 - Option suggestions: `@thing.autocomplete("target")` returning `app_commands.Choice`s (see `game_commands.py`).
 
 ## 4. Strings in Cave's voice
-User-facing flavor text goes in `data/dialogue.json` under the speaking character (usually `cave_johnson`) as a list of variants with `{placeholders}`. Fetch it with `self.bot.dialogue.get("cave_johnson", "thing_success", fallback="...", target=target)`. Keep the JSON valid (the test suite loads it). Deploy currently excludes `data/`, so tell the user dialogue edits need copying to the server.
+User-facing flavor text goes in `content/dialogue.json` under the speaking character (usually `cave_johnson`) as a list of variants with `{placeholders}`. Fetch it with `self.bot.dialogue.get("cave_johnson", "thing_success", fallback="...", target=target)`. Keep the JSON valid (the test suite loads it).
 
 ## 5. Config
 New settings: `os.getenv` in `config.py`, a line in `.env.example`, and the feature disables itself cleanly when unset. Never hardcode IDs/IPs/names (repo is public; CI privacy guard fails on them).

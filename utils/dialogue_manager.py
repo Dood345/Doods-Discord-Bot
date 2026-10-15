@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 class DialogueManager:
     """Manages bot dialogue and character responses from a centralized JSON configuration."""
     
-    def __init__(self, config_path: str = "data/dialogue.json"):
+    def __init__(self, config_path: str = "content/dialogue.json"):
         self.config_path = Path(config_path)
         self.dialogue = {}
         self.load_dialogue()
