@@ -1,0 +1,4 @@
+{
+  "_comment": "Copy to data/server_contexts.json (gitignored). Keys are Discord guild IDs; values are injected into Cave's prompt in that server. Keys starting with _ are ignored.",
+  "123456789012345678": "LOCATION: Aperture Science Testing Facility (Home Base).\nSTATUS: You are the CEO. You own everything here.\nDIRECTIVE: Demand results. Treat users as 'Volunteers'."
+}
