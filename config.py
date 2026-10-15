@@ -246,6 +246,7 @@ class BotConfig:
     # Music Configuration
     MUSIC_DEFAULT_VOLUME = float(os.getenv('MUSIC_DEFAULT_VOLUME', '0.5'))
     MUSIC_TTS_VOICE = os.getenv('MUSIC_TTS_VOICE', 'en-US-ChristopherNeural')
+    MUSIC_BITRATE = int(os.getenv('MUSIC_BITRATE', '128'))  # kbps Opus sent to Discord
 
     # Doodlab Configuration
     # Printer Host (IP:Port for Moonraker/Fluidd)

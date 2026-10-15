@@ -97,6 +97,20 @@ class MusicCommands(commands.Cog):
             logger.error(f"TTS Generation failed: {e}")
             return False
 
+    @staticmethod
+    def _opus_source(source: str, volume: float, before_options: str | None = None, options: str = "") -> discord.FFmpegOpusAudio:
+        """ffmpeg applies volume and encodes Opus once at full bitrate; discord.py just sends the packets.
+
+        (The old FFmpegPCMAudio + PCMVolumeTransformer path re-encoded in Python with discord.py's
+        encoder, which reserves bitrate for 15% packet-loss recovery and sounds noticeably worse.)
+        """
+        return discord.FFmpegOpusAudio(
+            source,
+            bitrate=BotConfig.MUSIC_BITRATE,
+            before_options=before_options,
+            options=f"{options} -filter:a volume={volume:.2f}".strip(),
+        )
+
     def get_music_status(self, guild: discord.Guild) -> str:
         """Returns a string describing what is playing in the guild's channels"""
         if not guild: return "No active guild."
@@ -224,12 +238,7 @@ class MusicCommands(commands.Cog):
                     # We append it to existing options
                     current_opts['before_options'] = str(current_opts.get('before_options', '')) + f" -ss {seek_time}"
                 
-                # Create Song Source
-                song_source = discord.PCMVolumeTransformer(
-                    discord.FFmpegPCMAudio(stream_url, **current_opts), 
-                    volume=self.volume
-                )
-                voice_client.play(song_source, after=after_song_ends)
+                voice_client.play(self._opus_source(stream_url, self.volume, **current_opts), after=after_song_ends)
                 
                 # Record Start Time (Adjusted for seek so Elapsed Time logic works)
                 # If we seek to 30s, we pretend we started 30s ago.
@@ -243,11 +252,7 @@ class MusicCommands(commands.Cog):
                 success = await self.generate_announcement(announcement_text)
                 
                 if success and os.path.exists("tts_announcement.mp3"):
-                    tts_source = discord.PCMVolumeTransformer(
-                        discord.FFmpegPCMAudio("tts_announcement.mp3"), 
-                        volume=self.volume + 0.2
-                    )
-                    voice_client.play(tts_source, after=play_song)
+                    voice_client.play(self._opus_source("tts_announcement.mp3", self.volume + 0.2), after=play_song)
                 else:
                     play_song(None)
             else:
