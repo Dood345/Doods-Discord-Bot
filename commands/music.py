@@ -12,6 +12,15 @@ from config import BotConfig
 
 logger = logging.getLogger(__name__)
 
+
+def _js_runtimes() -> dict:
+    try:
+        import deno
+        return {'deno': {'path': deno.find_deno_bin()}}
+    except Exception:
+        return {'node': {}}
+
+
 # OPTIMIZED YOUTUBE CONFIGURATION
 YDL_OPTIONS = {
     'format': 'bestaudio/best',
@@ -23,10 +32,9 @@ YDL_OPTIONS = {
     # 'match_filter': yt_dlp.utils.match_filter_func('!is_live'), # Optional: Skip livestreams
     # Python-API name is 'cookiefile' ('cookies' was silently ignored, so cookies were never used)
     'cookiefile': 'www.youtube.com_cookies.txt',
-    # YouTube's JS challenges (EJS) need a runtime; Node is installed on the server
-    'js_runtimes': {
-        'node': {}
-    },
+    # YouTube's JS challenges (EJS) need a supported runtime; the server's Node 20 is too old,
+    # so use the Deno binary from the `deno` PyPI package (installed into the venv)
+    'js_runtimes': _js_runtimes(),
     # Proof-of-Origin tokens from the bgutil provider container (see CLAUDE.md > Music)
     'extractor_args': {
         'youtubepot-bgutilhttp': {'base_url': [BotConfig.YT_POT_PROVIDER_URL]},

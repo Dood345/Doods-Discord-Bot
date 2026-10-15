@@ -17,6 +17,7 @@ dependencies = [
     "requests",
     "yt-dlp[default]",
     "bgutil-ytdlp-pot-provider",
+    "deno",
     "edge-tts",
     "aiosqlite"
 ]

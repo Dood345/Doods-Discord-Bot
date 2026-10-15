@@ -50,7 +50,7 @@ Cogs live in `commands/` and are registered explicitly in `DoodsBot.setup_hook()
 
 **Music** (`commands/music.py`): yt-dlp + ffmpeg (must be on PATH) voice playback via `FFmpegOpusAudio` (ffmpeg applies volume and encodes Opus once at `MUSIC_BITRATE`), `edge-tts` announcements. YouTube access needs three things on the server, all wired through `YDL_OPTIONS`:
 - `cookiefile`: `www.youtube.com_cookies.txt` in the repo root (untracked, preserved by deploy; export from a private window and close it without logging out). Note the Python option is `cookiefile`, not `cookies`.
-- a JS runtime for YouTube's challenges: Node on the server + `yt-dlp[default]` (pulls in `yt-dlp-ejs`).
+- a JS runtime for YouTube's challenges: `yt-dlp[default]` (pulls in `yt-dlp-ejs`) + Deno from the `deno` PyPI package (`_js_runtimes()`); the server's Node 20 is too old for yt-dlp's solver.
 - PO tokens from the bgutil provider container (plugin `bgutil-ytdlp-pot-provider`, URL `YT_POT_PROVIDER_URL`). Recreate it on the server with `docker run -d --name bgutil-provider --restart unless-stopped -p 127.0.0.1:4416:4416 brainicism/bgutil-ytdlp-pot-provider`.
 "Sign in to confirm you're not a bot" for popular videos means YouTube has flagged the home IP; stop testing for a few hours rather than retrying.
 
