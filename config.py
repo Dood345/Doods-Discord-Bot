@@ -247,6 +247,8 @@ class BotConfig:
     MUSIC_DEFAULT_VOLUME = float(os.getenv('MUSIC_DEFAULT_VOLUME', '0.5'))
     MUSIC_TTS_VOICE = os.getenv('MUSIC_TTS_VOICE', 'en-US-ChristopherNeural')
     MUSIC_BITRATE = int(os.getenv('MUSIC_BITRATE', '128'))  # kbps Opus sent to Discord
+    # bgutil PO-token provider (Docker container) that helps yt-dlp pass YouTube's bot checks
+    YT_POT_PROVIDER_URL = os.getenv('YT_POT_PROVIDER_URL', 'http://127.0.0.1:4416')
 
     # Doodlab Configuration
     # Printer Host (IP:Port for Moonraker/Fluidd)

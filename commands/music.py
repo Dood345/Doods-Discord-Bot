@@ -21,9 +21,15 @@ YDL_OPTIONS = {
     'default_search': 'ytsearch', # Default to searching YouTube
     'source_address': '0.0.0.0',
     # 'match_filter': yt_dlp.utils.match_filter_func('!is_live'), # Optional: Skip livestreams
-    'cookies': 'www.youtube.com_cookies.txt',
+    # Python-API name is 'cookiefile' ('cookies' was silently ignored, so cookies were never used)
+    'cookiefile': 'www.youtube.com_cookies.txt',
+    # YouTube's JS challenges (EJS) need a runtime; Node is installed on the server
     'js_runtimes': {
         'node': {}
+    },
+    # Proof-of-Origin tokens from the bgutil provider container (see CLAUDE.md > Music)
+    'extractor_args': {
+        'youtubepot-bgutilhttp': {'base_url': [BotConfig.YT_POT_PROVIDER_URL]},
     },
 }
 

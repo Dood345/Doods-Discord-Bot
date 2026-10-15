@@ -48,7 +48,11 @@ Cogs live in `commands/` and are registered explicitly in `DoodsBot.setup_hook()
 
 **Image generation** (`utils/image_gen.py` + `commands/image_cog.py`): talks to ComfyUI (`COMFY_URL`) using the workflow JSON `utils/image_z_image_turbo.json`, with blocking `urllib`/websocket calls run via `run_in_executor`.
 
-**Music** (`commands/music.py`): yt-dlp + ffmpeg (must be on PATH) voice playback, `edge-tts` announcements; uses `www.youtube.com_cookies.txt` in the repo root (untracked).
+**Music** (`commands/music.py`): yt-dlp + ffmpeg (must be on PATH) voice playback via `FFmpegOpusAudio` (ffmpeg applies volume and encodes Opus once at `MUSIC_BITRATE`), `edge-tts` announcements. YouTube access needs three things on the server, all wired through `YDL_OPTIONS`:
+- `cookiefile`: `www.youtube.com_cookies.txt` in the repo root (untracked, preserved by deploy; export from a private window and close it without logging out). Note the Python option is `cookiefile`, not `cookies`.
+- a JS runtime for YouTube's challenges: Node on the server + `yt-dlp[default]` (pulls in `yt-dlp-ejs`).
+- PO tokens from the bgutil provider container (plugin `bgutil-ytdlp-pot-provider`, URL `YT_POT_PROVIDER_URL`). Recreate it on the server with `docker run -d --name bgutil-provider --restart unless-stopped -p 127.0.0.1:4416:4416 brainicism/bgutil-ytdlp-pot-provider`.
+"Sign in to confirm you're not a bot" for popular videos means YouTube has flagged the home IP; stop testing for a few hours rather than retrying.
 
 ## Privacy rules (repo is public)
 

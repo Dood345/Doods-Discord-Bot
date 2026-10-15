@@ -15,7 +15,8 @@ dependencies = [
     "ping3",
     "websocket-client",
     "requests",
-    "yt-dlp",
+    "yt-dlp[default]",
+    "bgutil-ytdlp-pot-provider",
     "edge-tts",
     "aiosqlite"
 ]
