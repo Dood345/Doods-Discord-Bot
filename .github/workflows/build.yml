@@ -9,19 +9,25 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4  # Updated from v3
-    
-    - name: Set up Python 3.13   # Updated to match your Dockerfile/System version
-      uses: actions/setup-python@v5 # Updated from v4
+    - uses: actions/checkout@v4
+
+    - name: Set up uv + Python 3.14
+      uses: astral-sh/setup-uv@v6
       with:
-        python-version: "3.13"
-        
+        python-version: "3.14"
+
     - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        
+      run: uv sync
+
     - name: Verify Code Compilation
+      run: uv run python -m compileall -q . -x '\.venv'
+
+    - name: Run tests
+      run: uv run pytest -q
+
+    - name: Privacy guard (no hardcoded Discord IDs / LAN IPs)
       run: |
-        # Compile all python files to check for syntax errors
-        python -m compileall .
+        if git grep -nE '\b[0-9]{17,20}\b|\b192\.168\.[0-9]+\.[0-9]+\b' -- . ':!uv.lock' ':!*.example.json'; then
+          echo "::error::Hardcoded Discord ID or LAN IP found. Move it to .env or data/server_contexts.json."
+          exit 1
+        fi

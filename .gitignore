@@ -11,3 +11,10 @@ data/logs/
 *.mp3
 *.bak
 www.youtube.com_cookies.txt
+# Test/coverage artifacts
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Private per-server config (real guild IDs / names)
+data/server_contexts.json

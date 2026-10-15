@@ -15,11 +15,14 @@ class AIHandler:
         self.db = db_handler
         self.bot = bot
         self.model_name = "gemma4:12b"
-        self.ollama_url = self.config.OLLAMA_URL + "/api/generate"
+        self.ollama_url = f"{self.config.OLLAMA_URL.rstrip('/')}/api/generate" if self.config.OLLAMA_URL else None
         self.client = self._setup_ai()
     
     def _setup_ai(self):
         """Initialize Ollama AI"""
+        if not self.ollama_url:
+            logger.warning("OLLAMA_URL not set - AI features disabled")
+            return None
         logger.info(f"Ollama AI initialized for {self.model_name} at {self.ollama_url}")
         return True
 

@@ -5,8 +5,8 @@ from utils.ai_handler import AIHandler
 @pytest.mark.asyncio
 async def test_get_chat_response(temp_db, mock_config, mocker):
     """
-    Test the flow of generating an AI response without hitting the real Google API.
-    We mock the `gemini` client call inside the handler.
+    Test the flow of generating an AI response without hitting the real Ollama server.
+    We mock the handler's `_generate` call.
     """
     # Initialize the handler. It takes (db, bot) but we don't need a real bot here.
     # Pass None for the bot since most AI handler methods only use the db wrapper here.
@@ -14,17 +14,9 @@ async def test_get_chat_response(temp_db, mock_config, mocker):
     # Inject our mock config specifically for testing
     handler.config = mock_config 
     
-    # Because there's no GEMINI_API_KEY in the test environment, client is None.
-    # We must construct a mock client structure for it to hit.
-    handler.client = mocker.MagicMock()
-
-    # Mock the internal gemini API call
-    # The actual call is: self.client.models.generate_content(...)
-    mock_response = mocker.MagicMock()
-    mock_response.text = "Mocked AI Response: Science!"
-    
-    # We patch the google genai client object created inside __init__
-    mocker.patch.object(handler.client.models, 'generate_content', return_value=mock_response)
+    # No OLLAMA_URL in the test environment, so the handler starts disabled; force it on.
+    handler.client = True
+    mocker.patch.object(handler, '_generate', AsyncMock(return_value="Mocked AI Response: Science!"))
 
     # Add some dummy history to test the RAG building logic
     await temp_db.add_ai_message(user_id=1, guild_id=999, role="user", content="Hello AI")
@@ -62,12 +54,8 @@ async def test_roast_response(temp_db, mock_config, mocker):
     """Test generating a specific AI prompt (Roast)."""
     handler = AIHandler(temp_db, None)
     handler.config = mock_config
-    handler.client = mocker.MagicMock()
-    
-    # Mock generation
-    mock_response = mocker.MagicMock()
-    mock_response.text = "You are terrible at science."
-    mocker.patch.object(handler.client.models, 'generate_content', return_value=mock_response)
+    handler.client = True
+    mock_generate = mocker.patch.object(handler, '_generate', AsyncMock(return_value="You are terrible at science."))
     
     response = await handler.get_roast_response(
         character="hank",
@@ -77,6 +65,6 @@ async def test_roast_response(temp_db, mock_config, mocker):
     assert "terrible at science" in response
     
     # Verify the internal API call received the target correctly
-    handler.client.models.generate_content.assert_called_once()
-    args, kwargs = handler.client.models.generate_content.call_args
-    assert "Wheatley" in kwargs['contents'] # Check our generated prompt contents
+    mock_generate.assert_called_once()
+    prompt = mock_generate.call_args.args[0]
+    assert "Wheatley" in prompt # Check our generated prompt contents

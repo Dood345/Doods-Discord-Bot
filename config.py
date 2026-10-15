@@ -1,5 +1,26 @@
 """Configuration and data for the Discord bot"""
 import os
+import json
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def _load_server_contexts(path: str) -> dict:
+    """Load per-guild AI flavor text from a private (gitignored) JSON file.
+
+    JSON keys are strings; guild IDs from discord.py are ints, so keys are converted.
+    A missing or malformed file falls back to {} (every guild gets the default context).
+    """
+    try:
+        with open(path, 'r', encoding='utf-8') as f:
+            raw = json.load(f)
+        return {int(k): v for k, v in raw.items() if not k.startswith('_')}
+    except FileNotFoundError:
+        logger.info(f"No server contexts file at {path}; using default context for all guilds")
+    except (ValueError, AttributeError) as e:
+        logger.error(f"Invalid server contexts file {path}: {e}")
+    return {}
 
 class BotConfig:
     # Character AI Prompts
@@ -219,7 +240,7 @@ class BotConfig:
     REACTION_CHANCE = 25  # 25% chance to react to keywords
 
     # AI Configuration
-    OLLAMA_URL = os.getenv('OLLAMA_URL')
+    OLLAMA_URL = os.getenv('OLLAMA_URL')  # e.g. http://localhost:11434
 
     # Music Configuration
     MUSIC_DEFAULT_VOLUME = float(os.getenv('MUSIC_DEFAULT_VOLUME', '0.5'))
@@ -274,20 +295,8 @@ class BotConfig:
     # ComfyUI Configuration
     COMFY_URL = os.getenv('COMFY_URL')
 
-    GUILD_BAT = 100000000000000001
-    GUILD_FRIEND = 100000000000000002
-
     # --- SERVER CONTEXT MAPPING ---
-    # We put the data right here. No separate class, no static methods.
-    SERVER_CONTEXTS = {
-        GUILD_BAT: """
-            LOCATION: Aperture Science Back Alley Testing Facility (Home Base).
-            STATUS: You are the CEO. You own everything here.
-            DIRECTIVE: Demand results. Treat users as 'Volunteers'.
-            """,
-        GUILD_FRIEND: """
-            LOCATION: The Food Truck (Mobile Culinary Science Unit).
-            STATUS: Visiting Consultant.
-            DIRECTIVE: Be respectful of the chef, but suggest 'improving' his recipes with lasers.
-            """
-    }
+    # Per-guild AI flavor text, keyed by guild ID. Kept out of git because it holds
+    # real server IDs and names. See data/server_contexts.example.json for the format.
+    SERVER_CONTEXTS_FILE = os.getenv('SERVER_CONTEXTS_FILE', 'data/server_contexts.json')
+    SERVER_CONTEXTS = _load_server_contexts(SERVER_CONTEXTS_FILE)

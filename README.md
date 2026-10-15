@@ -5,7 +5,7 @@
 
 A sovereign, character-based Discord assistant with persistent AI memory, homelab integrations, and maximum chaos potential! 
 
-Features iconic characters from King of the Hill, South Park, and more, powered by Google Gemini AI.
+Features iconic characters from King of the Hill, South Park, and more, powered by a self-hosted LLM via [Ollama](https://ollama.com).
 
 ## ✨ Key Features
 
@@ -37,9 +37,10 @@ Features iconic characters from King of the Hill, South Park, and more, powered 
 ## 🚀 Quick Setup
 
 ### 1. Requirements
-- Python 3.13+
+- Python 3.14+
 - A Discord Bot Token (with Message Content Intent enabled)
-- Google Gemini API Key (Free)
+- An [Ollama](https://ollama.com) server with the chat model pulled (see `model_name` in `utils/ai_handler.py`)
+- Optional: ComfyUI (image generation), ffmpeg (music)
 
 ### 2. Installation
 We use [Astral's `uv`](https://docs.astral.sh/uv/) for lightning-fast, deterministic dependency management.
@@ -57,40 +58,16 @@ uv sync
 ```
 
 ### 3. Configuration (.env)
-Create a `.env` file in the root directory:
-```env
-# Homelab Service IPs
-PRINTER_IP=your_printer_ip_here
-ROUTER_IP=your_router_ip_here
-PIHOLE_IP=your_pihole_ip_here
-DOODLAB_IP=your_doodlab_ip_here
-PLEX_IP=your_plex_ip_here
+Copy `.env.example` to `.env` and fill in the values you need. Only `DISCORD_TOKEN` is required; AI, image, music and homelab features disable themselves when their settings are missing.
 
-# 3D Printer services
-PRINTER_HOST=your_printer_host(IP+PORT)_here
-
-# --- API URLs (Include http:// and Port) ---
-OVERSEERR_URL=your_overseerr_url_here
-RADARR_URL=your_radarr_url_here
-SONARR_URL=your_sonarr_url_here
-LIDARR_URL=your Lidarr_url_here
-
-# Discord Server ID's to send list of / commands to, also updates globally
-SERVER_ID=your_server_id_here
-
-# API Keys (Find these in Settings > General > Security)
-DISCORD_TOKEN=your_discord_token_here
-GEMINI_API_KEY=your_gemini_api_key_here
-OVERSEERR_API_KEY=your_overseerr_api_key_here
-RADARR_API_KEY=your_radarr_api_key_here
-SONARR_API_KEY=your_sonarr_api_key_here
-LIDARR_API_KEY=your Lidarr_api_key_here
+```bash
+cp .env.example .env
 ```
 
 ### 4. Customization (Make it Yours!)
 This bot is designed to be forked!
 - **Change Characters**: Edit `config.py` -> `CHARACTER_PROMPTS` to add your own personas.
-- **Server Contexts**: Edit `config.py` -> `SERVER_CONTEXTS` to change how the bot behaves based on which Discord Server it is in.
+- **Server Contexts**: Copy `data/server_contexts.example.json` to `data/server_contexts.json` (gitignored) and map your guild IDs to per-server persona text.
 - **Add Reactions**: Edit `config.py` -> `KEYWORD_REACTIONS` to make the bot react to your server's inside jokes.
 
 ### 5. Running
@@ -115,19 +92,19 @@ The Aperture Science Mainframe includes a rigorous automated test suite covering
 **On Windows (Development):**
 ```bash
 # Run the test suite
-python -m uv run pytest tests/utils/ -v
+python -m uv run pytest -v
 
 # Run the test suite and generate a coverage report
-python -m uv run pytest tests/utils/ -v --cov=utils
+python -m uv run pytest -v --cov=utils --cov=services
 ```
 
 **On Linux / Mac:**
 ```bash
 # Run the test suite
-uv run pytest tests/utils/ -v
+uv run pytest -v
 
 # Run the test suite and generate a coverage report
-uv run pytest tests/utils/ -v --cov=utils
+uv run pytest -v --cov=utils --cov=services
 ```
 
 ## 🚀 Deployment (GitHub Runner)
