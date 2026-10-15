@@ -29,6 +29,15 @@ YDL_OPTIONS = {
 
 YOUTUBE_HOSTS = {'youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be'}
 
+YOUTUBE_BLOCKED_MSG = ("YouTube is blocking the server with a 'confirm you're not a bot' check. "
+                       "The owner needs to refresh the YouTube cookies file on the server.")
+
+
+def is_youtube_bot_check(error: Exception) -> bool:
+    """YouTube's anti-bot wall (stale/missing cookies) rather than a problem with one video."""
+    text = str(error).lower()
+    return "not a bot" in text or "page needs to be reloaded" in text or "cookies" in text
+
 FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
     'options': '-vn'
@@ -247,6 +256,12 @@ class MusicCommands(commands.Cog):
         except yt_dlp.utils.DownloadError as e:
             logger.error(f"YTDL DownloadError for {title}: {e}")
             player.current_track = None
+            if is_youtube_bot_check(e):
+                # Every track would fail the same way; stop instead of burning through the queue
+                if player.notification_channel:
+                    await player.notification_channel.send(f"⚠️ **Couldn't play {title}.** {YOUTUBE_BLOCKED_MSG}")
+                await self.bot.change_presence(activity=discord.Game(name="Science | /help"))
+                return
             await self.play_next(guild)
         except Exception as e:
             logger.error(f"Failed to play {title}: {e}")
@@ -298,7 +313,13 @@ class MusicCommands(commands.Cog):
         else:
             target = f"ytsearch:{query}"
 
-        info = await self._fetch_youtube_data(target)
+        try:
+            info = await self._fetch_youtube_data(target)
+        except yt_dlp.utils.DownloadError as e:
+            logger.warning(f"resolve_track failed for {query!r}: {e}")
+            if is_youtube_bot_check(e):
+                return YOUTUBE_BLOCKED_MSG
+            return "YouTube couldn't load that one (it may be private, age-restricted or removed)."
         if not info:
             return "No playable tracks found."
         if 'entries' in info:

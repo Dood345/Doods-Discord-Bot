@@ -198,3 +198,14 @@ async def test_youtube_link_adds_queue_hint_and_low_temperature(temp_db, mocker)
     handler._last_chat.clear()
     await handler.get_chat_response(1, "good morning", user=OWNER)
     assert "queue_song with the link" not in handler._chat.call_args.args[0][-1]["content"]
+
+
+async def test_resolve_track_reports_youtube_bot_wall():
+    import yt_dlp
+    music = MusicCommands(MagicMock())
+    music._fetch_youtube_data = AsyncMock(side_effect=yt_dlp.utils.DownloadError(
+        "ERROR: [youtube] abc: Sign in to confirm you're not a bot. Use --cookies"))
+    assert "cookies" in await music.resolve_track("https://youtu.be/abc")
+
+    music._fetch_youtube_data.side_effect = yt_dlp.utils.DownloadError("ERROR: Video unavailable")
+    assert "couldn't load" in await music.resolve_track("https://youtu.be/abc")
