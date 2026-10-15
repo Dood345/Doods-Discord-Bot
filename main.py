@@ -29,6 +29,7 @@ from commands.music import MusicCommands
 from services.gift_service import GiftService
 from services.game_service import GameService
 from services.homelab_service import HomelabService
+from services.image_service import ImageService
 
 # Setup logging
 setup_logging()
@@ -64,6 +65,7 @@ class DoodsBot(commands.Bot):
         self.homelab_service = HomelabService()
         
         self.ai_handler = AIHandler(self.db, self)
+        self.image_service = ImageService(self.ai_handler)
         self.reaction_handler = ReactionHandler(self.dialogue)
         
         # User conversation histories for AI

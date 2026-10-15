@@ -244,6 +244,13 @@
     ],
     "image_error": [
       "❌ **Error:** Something went wrong: {error}"
+    ],
+    "image_busy": [
+      "🎙️ The image furnace is already running a job. One masterpiece at a time, test subject.",
+      "🎙️ The lab boys are mid-render. Wait your turn."
+    ],
+    "image_cooldown": [
+      "🎙️ Slow down, Picasso. Give the furnace a minute to cool between your commissions."
     ]
   }
 }

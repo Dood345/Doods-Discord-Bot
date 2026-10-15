@@ -3,6 +3,8 @@
 Tool output is read back to the user in a (possibly public) channel: never include IPs, hostnames or keys.
 """
 
+import io
+
 import discord
 
 from utils.agent import Tool, ToolContext, ToolRegistry
@@ -153,6 +155,36 @@ async def _queue_song(ctx: ToolContext, query: str) -> str:
         action, check=check, confirm_label="Queue it")
 
 
+async def _generate_image(ctx: ToolContext, prompt: str) -> str:
+    images = getattr(ctx.bot, "image_service", None)
+    if images is None or ctx.channel is None:
+        return "ERROR: image generation isn't available here."
+    prompt = " ".join(str(prompt).split())[:500]
+    if not prompt:
+        return "ERROR: describe the image to generate."
+    if key := images.check_available(ctx.user.id):
+        return {"busy": "ERROR: the image generator is busy with another job; try again in a minute.",
+                "cooldown": "ERROR: this user generated an image less than a minute ago; ask them to wait."}[key]
+
+    channel, user_id, dialogue = ctx.channel, ctx.user.id, ctx.bot.dialogue
+
+    async def job():
+        # Chat-initiated prompts weren't typed into /imagine, so the safety filter fails closed
+        result = await images.generate(user_id, prompt, fail_closed=True)
+        if result.status == "ok":
+            await channel.send(
+                dialogue.get("system", "image_success", prompt=prompt, enhanced_prompt=result.enhanced_prompt),
+                file=discord.File(io.BytesIO(result.image), filename="generated.png"))
+        elif result.status == "refused":
+            await channel.send(dialogue.get("system", "image_denied"))
+        else:
+            await channel.send(dialogue.get("system", f"image_{result.status}"))
+
+    images.run_in_background(job())
+    return ("STARTED: the image is generating and will be posted in this channel in about a minute. "
+            "Tell the user it's on the way; do not describe it as finished.")
+
+
 async def _remember_fact(ctx: ToolContext, fact: str) -> str:
     status = await ctx.bot.db.add_user_fact(ctx.user.id, str(fact))
     return {
@@ -245,6 +277,14 @@ def build_cave_tools() -> ToolRegistry:
             }, "required": ["tmdb_id", "media_type"]},
             requires_auth=True,
             timeout=20,
+        ),
+        Tool(
+            name="generate_image",
+            description="Generate an image from a description and post it in this channel (takes about a minute).",
+            handler=_generate_image,
+            parameters={"type": "object", "properties": {
+                "prompt": {"type": "string", "description": "What the image should show"},
+            }, "required": ["prompt"]},
         ),
         Tool(
             name="remember_fact",

@@ -3,54 +3,45 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 import logging
-from utils.image_gen import generate_image, is_comfy_online
 
 logger = logging.getLogger(__name__)
 
 class ImageCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.images = bot.image_service
 
-    @app_commands.command(name="imagine", description="Generate an image via ComfyUI (Enhanced by Gemini)")
+    @app_commands.command(name="imagine", description="Generate an image via ComfyUI (prompt enhanced by Cave)")
     async def imagine(self, interaction: discord.Interaction, prompt: str):
         # Defer immediately as this can take time
-        await interaction.response.defer() 
+        await interaction.response.defer()
 
-        # 0. Fast Status Check
-        if not await self.bot.loop.run_in_executor(None, is_comfy_online):
-             await interaction.followup.send(self.bot.dialogue.get("system", "image_offline"))
-             return
+        blocked = self.images.check_available(interaction.user.id)
+        if blocked:
+            await interaction.followup.send(self.bot.dialogue.get("system", f"image_{blocked}"), ephemeral=True)
+            return
 
         try:
-            # 1. Safety Check and Enhancement
-            enhanced_prompt = prompt
-            
-            if hasattr(self.bot, 'ai_handler') and self.bot.ai_handler.is_available():
-                # Notify user we are enhancing
-                await interaction.followup.send(self.bot.dialogue.get("system", "image_processing", prompt=prompt), ephemeral=True)
-                
-                enhanced_prompt = await self.bot.ai_handler.enhance_image_prompt(prompt)
-                
-                if enhanced_prompt == "SAFE_REFUSAL":
-                    await interaction.channel.send(self.bot.dialogue.get("system", "image_denied"))
-                    return # Exit cleanly
-            
-            # Update status
-            msg = await interaction.channel.send(self.bot.dialogue.get("system", "image_generating", enhanced_prompt=enhanced_prompt))
+            status_msg = await interaction.followup.send(
+                self.bot.dialogue.get("system", "image_processing", prompt=prompt), wait=True)
+            result = await self.images.generate(interaction.user.id, prompt)
 
-            # 2. Generate Image (Blocking call in executor)
-            image_bytes = await self.bot.loop.run_in_executor(None, generate_image, enhanced_prompt)
-            
-            if image_bytes:
-                file = discord.File(io.BytesIO(image_bytes), filename="generated.png")
-                await msg.delete() # Remove the status message
-                await interaction.channel.send(self.bot.dialogue.get("system", "image_success", prompt=prompt, enhanced_prompt=enhanced_prompt), file=file)
+            if result.status == "ok":
+                file = discord.File(io.BytesIO(result.image), filename="generated.png")
+                await status_msg.delete()
+                await interaction.channel.send(
+                    self.bot.dialogue.get("system", "image_success", prompt=prompt, enhanced_prompt=result.enhanced_prompt),
+                    file=file)
+            elif result.status == "refused":
+                await status_msg.edit(content=self.bot.dialogue.get("system", "image_denied"))
+            elif result.status in ("offline", "busy", "cooldown"):
+                await status_msg.edit(content=self.bot.dialogue.get("system", f"image_{result.status}"))
             else:
-                await msg.edit(content=self.bot.dialogue.get("system", "image_failed"))
-        
+                await status_msg.edit(content=self.bot.dialogue.get("system", "image_failed"))
+
         except Exception as e:
             logger.error(f"Image generation error: {e}")
-            await interaction.followup.send(self.bot.dialogue.get("system", "image_error", error=str(e)))
+            await interaction.followup.send(self.bot.dialogue.get("system", "image_error", error=type(e).__name__))
 
 async def setup(bot):
     await bot.add_cog(ImageCog(bot))

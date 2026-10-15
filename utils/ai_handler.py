@@ -158,6 +158,7 @@ class AIHandler:
             - asks what song is on -> now_playing
             - asks what GAME to play, or about the game library -> recommend_games / list_game_tags
             - asks to add a game -> add_game
+            - asks you to draw/make/generate a picture or image -> generate_image
             - tells you a preference or fact about themselves, or asks you to remember -> remember_fact
             - asks about the network, servers, printer, downloads, movies/shows -> the homelab tools
             Never invent live data or guess what a link contains: if no tool gives you the answer,
@@ -330,16 +331,17 @@ class AIHandler:
         await self.db.clear_ai_history(user_id)
         await self.db.clear_user_facts(user_id)
 
-    async def enhance_image_prompt(self, user_prompt: str) -> str:
+    async def enhance_image_prompt(self, user_prompt: str, fail_closed: bool = False) -> str:
         """
         Check image prompt for safety and enhance it using Gemini.
         Returns:
             - "SAFE_REFUSAL" if the prompt violates safety policies (e.g. child safety).
             - Enhanced prompt string if safe.
-            - Original prompt if AI is unavailable or fails.
+            - Original prompt if AI is unavailable or fails (or "SAFE_REFUSAL" when fail_closed,
+              used for chat-initiated images where nobody reviewed the prompt).
         """
         if not self.is_available():
-            return user_prompt
+            return "SAFE_REFUSAL" if fail_closed else user_prompt
 
         try:
             # Combined prompt for safety check and enhancement
@@ -363,9 +365,12 @@ class AIHandler:
             # Remove quotes if Ollama adds them
             if result.startswith('"') and result.endswith('"'):
                 result = result[1:-1]
+            # The model sometimes wraps the refusal in extra words
+            if "SAFE_REFUSAL" in result or not result:
+                return "SAFE_REFUSAL" if (fail_closed or "SAFE_REFUSAL" in result) else user_prompt
                 
             return result
             
         except Exception as e:
             logger.error(f"AI image prompt enhancement error: {e}")
-            return user_prompt
+            return "SAFE_REFUSAL" if fail_closed else user_prompt

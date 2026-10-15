@@ -43,7 +43,7 @@ Each phase is one or more PRs, branch → `dev` → `main`. Each phase ends with
 - Build `utils/agent/` with a small tool registry: each tool = name, JSON schema, async handler, `requires_auth: bool`, `side_effect: bool`. Loop: call model → run requested tools → feed results back → repeat (max ~4 iterations, per-tool timeout) → final text.
 - Replace the keyword "RAG" blocks with tools.
 
-**1b. Starter tools** (each wraps an existing service/cog — no new business logic in the agent). Read-only ones ✅: `recommend_games`, `list_game_tags`, `now_playing`, `service_status`, `printer_status`, `download_queue`. Side-effect tools ✅ behind confirm cards: `add_game`, `queue_song` (#104), `search_media` + `request_media` (#105). Still open: `generate_image` (must reuse `/imagine`'s safety enhancer, run in the background, one at a time on the shared GPU), `rate_game`, `skip_song`.
+**1b. Starter tools** (each wraps an existing service/cog — no new business logic in the agent). Read-only ones ✅: `recommend_games`, `list_game_tags`, `now_playing`, `service_status`, `printer_status`, `download_queue`. Side-effect tools ✅ behind confirm cards: `add_game`, `queue_song` (#104), `search_media` + `request_media` (#105). `generate_image` ✅ (shared ImageService: one job at a time, fail-closed safety filter, background post). Still open: `rate_game`, `skip_song`.
 | Tool | Wraps | Gate |
 |---|---|---|
 | `recommend_games`, `search_games`, `add_game`, `rate_game` | `GameService` | — |

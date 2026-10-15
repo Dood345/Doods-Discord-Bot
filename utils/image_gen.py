@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 # The IP of your ComfyUI machine
 COMFY_URL = BotConfig.COMFY_URL
 CLIENT_ID = str(uuid.uuid4())
+GENERATION_TIMEOUT = 180  # seconds to wait on ComfyUI's websocket
 
 def is_comfy_online():
     """Fast check to see if ComfyUI is running"""
@@ -74,7 +75,9 @@ def generate_image(user_prompt):
         workflow["44"]["inputs"]["seed"] = random.randint(1, 100000000000000)
 
     # 3. Connect to WebSocket to listen for completion
+    # Timeout so a stalled ComfyUI can't hang the executor thread (and the GPU lock) forever
     ws = websocket.WebSocket()
+    ws.settimeout(GENERATION_TIMEOUT)
     try:
         ws_url = COMFY_URL.replace("http://", "ws://").replace("https://", "wss://") + f"/ws?clientId={CLIENT_ID}"
         ws.connect(ws_url)
