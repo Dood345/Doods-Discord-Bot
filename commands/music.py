@@ -621,30 +621,10 @@ class MusicCommands(commands.Cog):
         else:
             await interaction.response.send_message("The testing queue is already empty.", ephemeral=True)
 
-    @app_commands.command(name="list", description="List every active audio session in this server")
+    @app_commands.command(name="list", description="List specific songs in the queue")
     async def list_queue(self, interaction: discord.Interaction) -> None:
-        """Players are per voice channel, so show each channel's session (/queue shows just yours)."""
-        if not interaction.guild:
-            await interaction.response.send_message("No active audio session found.", ephemeral=True)
-            return
-
-        embed = discord.Embed(title="🎧 Facility Audio Sessions", color=0xFFA500)
-        for channel_id, player in self.players.items():
-            channel = interaction.guild.get_channel(channel_id)
-            if channel is None or (not player.current_track and not player.queue):
-                continue  # other guild's player, or an idle one
-            now = f"{player.current_track[1]} by {player.current_track[2]}" if player.current_track else "Nothing"
-            lines = [f"**Now Playing:** {now}"]
-            for i, (_, title, uploader) in enumerate(player.queue[:5], 1):
-                lines.append(f"`{i}.` {title} by {uploader}")
-            if len(player.queue) > 5:
-                lines.append(f"*...and {len(player.queue) - 5} more.*")
-            embed.add_field(name=f"🔊 {channel.name}", value="\n".join(lines)[:1024], inline=False)
-
-        if not embed.fields:
-            await interaction.response.send_message("No active audio sessions. Silence is inefficient.")
-            return
-        await interaction.response.send_message(embed=embed)
+        """Alias for queue"""
+        await self.view_queue.callback(self, interaction) # type: ignore
 
     @app_commands.command(name="stop", description="Clear queue and disconnect")
     async def stop(self, interaction: discord.Interaction) -> None:
