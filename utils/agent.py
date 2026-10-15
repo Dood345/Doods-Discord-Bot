@@ -22,6 +22,7 @@ class ToolContext:
     user: Any
     guild: Any = None
     channel: Any = None
+    pending: set = field(default_factory=set)  # confirmation cards already posted this turn
 
 
 @dataclass
@@ -32,6 +33,7 @@ class Tool:
     parameters: Dict = field(default_factory=lambda: {"type": "object", "properties": {}})
     requires_auth: bool = False    # homelab/owner-only; checked against ctx.user in code
     requires_guild: bool = False   # needs a server (not available in DMs)
+    timeout: float = TOOL_TIMEOUT
 
     def schema(self) -> Dict:
         return {"type": "function", "function": {
@@ -79,7 +81,7 @@ class ToolRegistry:
 
         logger.info(f"Agent tool call: {name} args={args} user={ctx.user.id if ctx.user else None}")
         try:
-            return str(await asyncio.wait_for(tool.handler(ctx, **args), timeout=TOOL_TIMEOUT))
+            return str(await asyncio.wait_for(tool.handler(ctx, **args), timeout=tool.timeout))
         except asyncio.TimeoutError:
             return f"ERROR: {name} timed out."
         except Exception as e:

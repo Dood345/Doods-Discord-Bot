@@ -30,6 +30,13 @@ class DatabaseHandler:
                              role TEXT, 
                              content TEXT, 
                              timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+
+                # Long-term facts a user asked Cave to remember (global per user, like ai_history)
+                await conn.execute('''CREATE TABLE IF NOT EXISTS user_facts
+                            (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                             user_id INTEGER,
+                             fact TEXT,
+                             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
                 
                 # --- NEW: Games Repository ---
                 # Status: 'seen', 'played', 'playing', 'wishlist'
@@ -307,6 +314,47 @@ class DatabaseHandler:
                 await conn.commit()
         except Exception as e:
             logger.error(f"Failed to clear AI history: {e}")
+
+    # --- Long-term user facts ---
+    MAX_USER_FACTS = 20
+    MAX_FACT_LENGTH = 200
+
+    async def add_user_fact(self, user_id: int, fact: str) -> str:
+        """Store a fact for a user. Returns 'added', 'duplicate', 'full' or 'error'."""
+        fact = " ".join(fact.split())[:self.MAX_FACT_LENGTH]
+        if not fact:
+            return "error"
+        try:
+            async with self.get_connection() as conn:
+                async with conn.execute("SELECT fact FROM user_facts WHERE user_id = ?", (user_id,)) as cursor:
+                    existing = [r[0].lower() for r in await cursor.fetchall()]
+                if fact.lower() in existing:
+                    return "duplicate"
+                if len(existing) >= self.MAX_USER_FACTS:
+                    return "full"
+                await conn.execute("INSERT INTO user_facts (user_id, fact) VALUES (?, ?)", (user_id, fact))
+                await conn.commit()
+                return "added"
+        except Exception as e:
+            logger.error(f"Failed to add user fact: {e}")
+            return "error"
+
+    async def get_user_facts(self, user_id: int) -> List[str]:
+        try:
+            async with self.get_connection() as conn:
+                async with conn.execute("SELECT fact FROM user_facts WHERE user_id = ? ORDER BY id", (user_id,)) as cursor:
+                    return [r[0] for r in await cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Failed to get user facts: {e}")
+            return []
+
+    async def clear_user_facts(self, user_id: int):
+        try:
+            async with self.get_connection() as conn:
+                await conn.execute("DELETE FROM user_facts WHERE user_id = ?", (user_id,))
+                await conn.commit()
+        except Exception as e:
+            logger.error(f"Failed to clear user facts: {e}")
 
     async def get_tags(self, guild_id: int) -> List[str]:
         try:

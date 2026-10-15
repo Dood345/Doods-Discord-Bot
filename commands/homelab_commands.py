@@ -11,64 +11,29 @@ from utils.auth import is_authorized
 logger = logging.getLogger(__name__)
 
 class RequestView(discord.ui.View):
-    def __init__(self, title, media_id, media_type, api_key, url):
+    def __init__(self, title, media_id, media_type, api_key=None, url=None):
         super().__init__(timeout=60)
         self.title = title
         self.media_id = media_id
         self.media_type = media_type
-        self.api_key = api_key
-        self.url = url
 
     @discord.ui.button(label="Request This", style=discord.ButtonStyle.green, emoji="📥")
     async def request_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if not is_authorized(interaction.user):
+            await interaction.response.send_message("❌ **Access Denied**: Authorized Personnel Only ⛔", ephemeral=True)
+            return
+
         # Disable button after click
         button.disabled = True
         await interaction.response.edit_message(view=self)
-        
-        # Prepare payload, userId = 2 for discordBot user
-        headers = {'X-Api-Key': self.api_key}
-        payload = {
-            "mediaId": self.media_id,
-            "mediaType": self.media_type,
-            "is4k": False,
-            "userId": 2
-        }
 
-        # Handling for TV Shows (Must specify seasons)
-        if self.media_type == 'tv':
-            try:
-                # We need to fetch the show details to know the season numbers!
-                # Result from /search doesn't always have full season data
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(f"{self.url}/api/v1/tv/{self.media_id}", headers=headers) as detail_resp:
-                        if detail_resp.status == 200:
-                            details = await detail_resp.json()
-                            # Extract season numbers (exclude specials/season 0 if desired, but let's include all > 0)
-                            seasons_list = [s['seasonNumber'] for s in details.get('seasons', []) if s['seasonNumber'] > 0]
-                            payload['seasons'] = seasons_list
-                        else:
-                            # Fallback if fetch fails (unsafe, but better than nothing)
-                            logger.error(f"Failed to fetch TV details: {detail_resp.status}")
-                            payload['seasons'] = [1] 
-            except Exception as e:
-                logger.error(f"Error fetching TV details: {e}")
-                payload['seasons'] = [1] # Fallback
-        
-        # Send Request
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(f"{self.url}/api/v1/request", headers=headers, json=payload) as resp:
-                    if resp.status == 201:
-                        await interaction.followup.send(f"✅ Successfully requested **{self.title}**!", ephemeral=True)
-                    elif resp.status == 409: # Already requested
-                        await interaction.followup.send(f"⚠️ **{self.title}** is already requested!", ephemeral=True)
-                    else:
-                        error_text = await resp.text()
-                        logger.error(f"Overseerr Request Failed: {resp.status} - {error_text}")
-                        await interaction.followup.send(f"❌ Failed to request. Check logs for details ({resp.status}).", ephemeral=True)
-        except Exception as e:
-            logger.error(f"Request Exception: {e}")
-            await interaction.followup.send("❌ Error contacting Overseerr.", ephemeral=True)
+        status, _ = await interaction.client.homelab_service.request_media(self.media_id, self.media_type)
+        if status == "requested":
+            await interaction.followup.send(f"✅ Successfully requested **{self.title}**!", ephemeral=True)
+        elif status == "duplicate":
+            await interaction.followup.send(f"⚠️ **{self.title}** is already requested!", ephemeral=True)
+        else:
+            await interaction.followup.send("❌ Failed to request. Check logs for details.", ephemeral=True)
 
 class HomeLabCommands(commands.Cog):
     def __init__(self, bot):
@@ -204,69 +169,25 @@ class HomeLabCommands(commands.Cog):
 
         await interaction.response.defer()
         
-        # Strip trailing slash just in case
-        base_url = BotConfig.OVERSEERR_URL.rstrip('/')
-        
-        # Manually encode query to ensure compliance with strict Overseerr validation
-        # The error "Parameter 'query' must be url encoded" suggests it hates raw spaces or specific chars
-        from urllib.parse import quote
-        encoded_query = quote(query)
-        
-        url = f"{base_url}/api/v1/search?query={encoded_query}&page=1&language=en"
-        headers = {
-            'X-Api-Key': BotConfig.OVERSEERR_API_KEY,
-            'Accept': 'application/json'
-        }
-        # params = {} # We are putting everything in the URL string now to be safe
-        
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=headers) as resp:
-                    if resp.status != 200:
-                        text = await resp.text()
-                        logger.error(f"Overseerr Search Error: {resp.status} - {text}")
-                        await interaction.followup.send(f"❌ Error talking to Overseerr ({resp.status}). Check logs.")
-                        return
-                    
-                    data = await resp.json()
-                    results = data.get('results', [])
-                    
-                    if not results:
-                        await interaction.followup.send(f"🔍 No results found for '{query}'")
-                        return
-                    
-                    # Limit to top 5 results for the dropdown
-                    top_results = results[:5]
-                    
-                    # Create Select Menu Options
-                    options = []
-                    for res in top_results:
-                        # Extract info
-                        media_type = res.get('mediaType', 'unknown')
-                        title = res.get('title', res.get('name', 'Unknown'))
-                        year = res.get('releaseDate', res.get('firstAirDate', '????'))[:4]
-                        tmdb_id = res.get('id')
-                        
-                        # Emoji based on type
-                        emoji = "🎬" if media_type == 'movie' else "📺"
-                        
-                        # Value must be a string unique identifier
-                        # We'll pack the data into the value: "id|type|title"
-                        # But title might have pipes, so just use ID and Type
-                        value = f"{tmdb_id}|{media_type}|{title[:50]}" 
-                        
-                        label = f"{title} ({year})"
-                        desc = f"{media_type.upper()} - ID: {tmdb_id}"
-                        
-                        options.append(discord.SelectOption(label=label[:100], value=value, description=desc, emoji=emoji))
+        results = await self.homelab.search_media(query)
+        if results is None:
+            await interaction.followup.send("❌ Error talking to Overseerr. Check logs.")
+            return
+        if not results:
+            await interaction.followup.send(f"🔍 No results found for '{query}'")
+            return
 
-                    # Create View with Select Menu
-                    select_view = MediaSelectView(options, BotConfig.OVERSEERR_API_KEY, base_url)
-                    await interaction.followup.send(f"🔍 Found {len(results)} results for '**{query}**'. Select one:", view=select_view)
-                    
-        except Exception as e:
-            logger.error(f"Search failed: {e}")
-            await interaction.followup.send(f"❌ Something went wrong: {e}")
+        options = []
+        for res in results:
+            emoji = "🎬" if res['media_type'] == 'movie' else "📺"
+            # Value packs "id|type|title" (title trimmed to fit Discord's 100-char value limit)
+            value = f"{res['tmdb_id']}|{res['media_type']}|{res['title'][:50]}"
+            label = f"{res['title']} ({res['year']})"
+            desc = f"{res['media_type'].upper()} - ID: {res['tmdb_id']}"
+            options.append(discord.SelectOption(label=label[:100], value=value, description=desc, emoji=emoji))
+
+        select_view = MediaSelectView(options, None, None)
+        await interaction.followup.send(f"🔍 Found {len(results)} results for '**{query}**'. Select one:", view=select_view)
 
     @app_commands.command(name="dl-queue", description="View active downloads in valid *arr apps")
     async def view_queue(self, interaction: discord.Interaction):
@@ -427,7 +348,7 @@ class MediaSelect(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         # Decode the selected value
         selection = self.values[0]
-        media_id, media_type, title = selection.split('|')
+        media_id, media_type, title = selection.split('|', 2)
         media_id = int(media_id)
         
         # Defer update
