@@ -118,7 +118,7 @@ class MusicCommands(commands.Cog):
             
         return "\n".join(status_reports)
 
-    async def play_next(self, interaction: discord.Interaction) -> None:
+    async def play_next(self, guild: discord.Guild | None) -> None:
         """Callback to play the next song in the queue"""
         # STOP if bot is shutting down
         if self.bot.is_closed():
@@ -126,11 +126,10 @@ class MusicCommands(commands.Cog):
 
         # Dynamically determine which channel we are servicing
         # The bot can be in multiple guilds, so we need to find the voice_client context
-        # Since this method is passed 'interaction', we can trust interaction.guild
-        if not interaction.guild:
+        if not guild:
             return
             
-        voice_client = interaction.guild.voice_client
+        voice_client = guild.voice_client
         if not voice_client or not voice_client.channel:
             return
 
@@ -189,7 +188,7 @@ class MusicCommands(commands.Cog):
             
             # 2. Update Facility Status
             vc_channel = voice_client.channel
-            if vc_channel.permissions_for(interaction.guild.me).manage_channels:
+            if vc_channel.permissions_for(guild.me).manage_channels:
                 if seek_time:
                     await vc_channel.edit(status=f"⏩ {title} (+{int(seek_time)}s)")
                 else:
@@ -201,7 +200,7 @@ class MusicCommands(commands.Cog):
             
             def after_song_ends(error: Exception | None) -> None:
                 if error: logger.error(f"Song Error: {error}")
-                asyncio.run_coroutine_threadsafe(self.play_next(interaction), self.bot.loop)
+                asyncio.run_coroutine_threadsafe(self.play_next(guild), self.bot.loop)
 
             def play_song(error: Exception | None = None) -> None:
                 if error: logger.error(f"TTS Error: {error}")
@@ -225,7 +224,7 @@ class MusicCommands(commands.Cog):
                 player.start_time = time.time() - (seek_time if seek_time else 0)
 
             # Define Step 1: TTS Announcement (Skip if Seeking)
-            if not seek_time and self.tts_settings.get(interaction.guild.id, False):
+            if not seek_time and self.tts_settings.get(guild.id, False):
                 clean_title = title.split('(')[0].split('[')[0]
                 announcement_text = f"Now playing: {clean_title}"
                 
@@ -245,12 +244,12 @@ class MusicCommands(commands.Cog):
         except yt_dlp.utils.DownloadError as e:
             logger.error(f"YTDL DownloadError for {title}: {e}")
             player.current_track = None
-            await self.play_next(interaction)
+            await self.play_next(guild)
         except Exception as e:
             logger.error(f"Failed to play {title}: {e}")
             # If seek fails, just move next
             player.current_track = None
-            await self.play_next(interaction)
+            await self.play_next(guild)
 
     async def _ensure_voice_connection(self, interaction: discord.Interaction) -> discord.VoiceClient | None:
         """Helper to ensure the bot is connected to the right voice channel."""
@@ -400,17 +399,17 @@ class MusicCommands(commands.Cog):
                 current_track_info = player.current_track
 
                 if vc.is_playing() and current_track_info:
-                    queue.insert(len(added_songs), current_track_info)
+                    player.queue.insert(len(added_songs), current_track_info)
                     vc.stop()
                     await msg.edit(content=f"🚨 **Interrupted!** Playing {added_songs[0][1]} immediately.")
                 else:
                     if not vc.is_playing():
-                        await self.play_next(interaction)
+                        await self.play_next(interaction.guild)
             else:
                 queue.extend(added_songs)
 
                 if not vc.is_playing():
-                    await self.play_next(interaction)
+                    await self.play_next(interaction.guild)
 
         except yt_dlp.utils.DownloadError as e:
             logger.error(f"YTDL Error: {e}")
