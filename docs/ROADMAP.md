@@ -81,7 +81,7 @@ Deliverable also includes the `add-ai-tool` skill (written once the registry's r
 - **Game Night Director.** ✅ `/gamenight` (picks fit the voice channel's head count, rating-weighted, skips 'avoid'; poll + Discord scheduled event; needs Manage Events). Still open: attendance points, a Cave tool. Cave proposes 3 games from the library filtered by who's online/in voice and player counts, runs a poll, creates a Discord Scheduled Event, pings attendees.
 - **Facility announcements.** ✅ opt-in `/announcements channel:`, new media (Overseerr poll), `/birthday set`, printer-finished DM to the owner. Opt-in proactive posts: printer job finished (poll Moonraker → ping you with webcam snapshot), new media available (Overseerr webhook), birthday shout-outs (opt-in only).
 - **Voice Cave.** ✅ `/speak` (agent answer, spoken with edge-tts in your voice channel; never over music; leaves if it joined just to talk). edge-tts bumped to 7.3.1 (7.2.7 got 403s, which also broke the music announcer). Cave joins voice and speaks announcements/answers with edge-tts (plumbing already exists in music).
-- **Image fun.** `/portrait @user` (test-subject ID badge), `/poster` (Aperture propaganda poster) using ComfyUI.
+- **Image fun.** ✅ `/portrait` (ID badge; the prompt never includes anything about the person, Pillow letters the badge) and `/poster` (Cave slogan banner), through `ImageService` (queue, cooldown, safety filter). `/portrait @user` (test-subject ID badge), `/poster` (Aperture propaganda poster) using ComfyUI.
 
 ## Phase 3 — Modernize the plumbing
 
