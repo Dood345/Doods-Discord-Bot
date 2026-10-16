@@ -119,3 +119,14 @@ async def test_play_reports_resolve_errors_and_keeps_links_on_youtube():
     await MusicCommands.play.callback(music, interaction, url="https://youtu.be/x")
     music.resolve_request.assert_not_awaited()
     assert music.players[5].queue == [("u", "Still Alive", "JC")]
+
+
+def test_repeated_question_drops_old_answers():
+    from utils.ai_handler import drop_repeated_question
+    history = [("user", "hi"), ("model", "Hello!"),
+               ("user", "What are science points?"), ("model", "Made-up answer."),
+               ("user", "play kryptonite"), ("model", "Queued."),
+               ("user", "what are SCIENCE points"), ("model", "Made-up answer again.")]
+    kept = drop_repeated_question(history, "what are science points??")
+    assert kept == [("user", "hi"), ("model", "Hello!"), ("user", "play kryptonite"), ("model", "Queued.")]
+    assert drop_repeated_question(history, "something new") == history
