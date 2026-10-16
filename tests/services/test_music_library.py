@@ -153,3 +153,30 @@ async def test_enqueue_tracks_queues_all_and_starts_playing():
     msg = await music.enqueue_tracks(member, None, tracks)
     assert music.players[7].queue == tracks and "+2 more" in msg
     music.play_next.assert_awaited_once()
+
+
+def test_title_score_and_best_album():
+    from services.music_library import best_album, title_score
+    assert title_score("Still Alive Jonathan Coulton", "Still Alive") == 1.0
+    assert title_score("Still Alive Jonathan Coulton", "Still Alive (J.C. mix)") == 0.0   # extra title words
+    assert title_score("play the whole portal two soundtrack today", "Alive") == 0.0        # too small a part
+    albums = [{"title": "Portal 2 Soundtrack: Songs to Test By", "parentTitle": "Aperture"},
+              {"title": "Portal Original Soundtrack", "parentTitle": "Aperture"},
+              {"title": "Half-Life 2", "parentTitle": "Valve"}]
+    assert best_album("Portal Soundtrack", albums)["title"] == "Portal Original Soundtrack"
+    assert best_album("portal 2 soundtrack", albums)["title"].startswith("Portal 2")
+    assert best_album("kryptonite", albums) is None
+
+
+async def test_search_retries_shorter_phrases():
+    from unittest.mock import AsyncMock
+    from services.music_library import MusicLibrary
+    lib = MusicLibrary(base_url="http://plex", token="t")
+    hit = {"Hub": [{"type": "track", "Metadata": [{"title": "Still Alive"}]}]}
+    lib._get = AsyncMock(side_effect=[{"Hub": []}, {"Hub": []}, hit])
+    hubs = await lib._search("still alive jonathan coulton")
+    assert hubs["track"][0]["title"] == "Still Alive"
+    assert [c.args[1]["query"] for c in lib._get.await_args_list] == [
+        "still alive jonathan coulton", "still alive jonathan", "still alive"]
+    lib._get = AsyncMock(return_value=None)
+    assert await lib._search("anything here") is None                 # Plex down: no retries
