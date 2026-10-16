@@ -13,7 +13,7 @@ import time
 from urllib.parse import urlparse
 from config import BotConfig
 from services.music_library import PLEX_PREFIX, MATCH_THRESHOLD, match_score
-from services.music_sessions import REWIND, MusicSessionStore, fmt_time, snapshot
+from services.music_sessions import REWIND, MusicSessionStore, fmt_time, is_stale, place_request, snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +103,7 @@ class GuildPlayer:
         self.pause_start_time: float | None = None
         self.seek_position: float | None = None
         self.notification_channel: discord.TextChannel | None = None
+        self.last_active: float | None = None  # last time a track started or was queued
 
 class MusicCommands(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -161,6 +162,10 @@ class MusicCommands(commands.Cog):
         if self.bot.is_closed():
             return
         try:
+            # Forget players that lost voice and haven't been used for a day (their queue would be a surprise)
+            connected = {vc.channel.id for vc in self.bot.voice_clients if getattr(vc, "channel", None)}
+            for channel_id in [c for c, p in self.players.items() if c not in connected and is_stale(p)]:
+                del self.players[channel_id]
             snaps = self._active_sessions()
             await self.sessions.save_all(snaps)
             summary = (len(snaps), len(self.players), len(self.bot.voice_clients))
@@ -334,6 +339,7 @@ class MusicCommands(commands.Cog):
             await self.bot.change_presence(activity=discord.Game(name="Science | /help"))
             return
             
+        player.last_active = time.time()
         try:
             # 1. Get Stream URL (JIT)
             extra_before = ""
@@ -563,15 +569,27 @@ class MusicCommands(commands.Cog):
         if isinstance(text_channel, discord.TextChannel):
             player.notification_channel = text_channel
         first = tracks[0]
-        player.queue.extend(tracks)
+        idle = not vc.is_playing() and not vc.is_paused()
+        leftover = place_request(player, tracks, idle)
         more = f" (+{len(tracks) - 1} more queued)" if len(tracks) > 1 else ""
 
-        if not vc.is_playing() and not vc.is_paused():
+        if idle:
             await self.play_next(guild)
-            return f"🎵 Now playing **{first[1]}** by {first[2]}{more}."
+            return self._started_message(player, tracks, more, leftover)
         if len(tracks) > 1:
             return f"🎵 Queued {len(tracks)} tracks, starting with **{first[1]}** by {first[2]}."
         return f"🎵 Queued **{first[1]}** by {first[2]} (#{len(player.queue)} in line)."
+
+    @staticmethod
+    def _started_message(player: GuildPlayer, tracks: list, more: str, leftover: int) -> str:
+        """What actually started after an idle request (Cave repeats this, so it must be true)."""
+        current = player.current_track
+        if not current:
+            return "⚠️ Couldn't start that one; the audio processor refused it."
+        if current not in tracks:
+            return f"🎵 Couldn't play your request, so the queue moved on: now playing **{current[1]}** by {current[2]}."
+        after = f" Then picking up the {leftover} track{'s' if leftover != 1 else ''} left from earlier." if leftover else ""
+        return f"🎵 Now playing **{current[1]}** by {current[2]}{more}.{after}"
 
     @app_commands.command(name="play-tts", description="Toggle the vocal announcement system")
     async def toggle_tts(self, interaction: discord.Interaction) -> None:
@@ -717,12 +735,15 @@ class MusicCommands(commands.Cog):
                 player.queue.insert(len(added_songs), current_track_info)
                 vc.stop()
                 await msg.edit(content=f"🚨 **Interrupted!** Playing {added_songs[0][1]} immediately.")
-            elif not vc.is_playing():
+            elif not vc.is_playing() and not vc.is_paused():
                 await self.play_next(guild)
         else:
-            player.queue.extend(added_songs)
-            if not vc.is_playing():
+            idle = not vc.is_playing() and not vc.is_paused()
+            leftover = place_request(player, added_songs, idle)
+            if idle:
                 await self.play_next(guild)
+                if leftover or player.current_track not in added_songs:
+                    await msg.edit(content=self._started_message(player, added_songs, "", leftover))
 
     @app_commands.command(name="previous", description="Go back to the previous song")
     async def previous(self, interaction: discord.Interaction) -> None:

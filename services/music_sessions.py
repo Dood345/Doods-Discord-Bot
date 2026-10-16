@@ -86,6 +86,41 @@ class MusicSessionStore:
             await conn.commit()
 
 
+QUEUE_TTL = 24 * 60 * 60  # a player idle (not in voice) this long forgets its queue
+
+
+def is_stale(player, now: Optional[float] = None) -> bool:
+    """True when nothing has been played or queued on this player for QUEUE_TTL."""
+    last = getattr(player, "last_active", None)
+    return last is not None and (now or time.time()) - last > QUEUE_TTL
+
+
+def place_request(player, tracks: List[Track], idle: bool, now: Optional[float] = None) -> int:
+    """Put a user's request in the player's queue; returns how many leftover tracks will play after it.
+
+    While music is playing (or paused) the request joins the end of the queue, as usual. When idle
+    (voice dropped, finished, or the bot just rejoined), the request plays right away: it goes to the
+    front, followed by whatever was left from before, starting with the song that was cut off. A
+    leftover queue older than a day is dropped instead.
+    """
+    now = now or time.time()
+    if idle and is_stale(player, now):
+        player.queue = []
+        player.current_track = None
+    leftover = 0
+    if idle:
+        interrupted = [tuple(player.current_track)] if player.current_track else []
+        # current_track is cleared so play_next doesn't file the interrupted song under history
+        player.current_track = None
+        rest = interrupted + list(player.queue)
+        leftover = len(rest)
+        player.queue = list(tracks) + rest
+    else:
+        player.queue.extend(tracks)
+    player.last_active = now
+    return leftover
+
+
 def fmt_time(seconds: float) -> str:
     seconds = int(seconds)
     return f"{seconds // 60}:{seconds % 60:02d}"
