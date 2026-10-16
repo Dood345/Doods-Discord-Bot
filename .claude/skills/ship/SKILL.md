@@ -15,8 +15,9 @@ Production deploys on every push to `main`, so shipping is mechanical and strict
 
 ## 2. Ship
 ```
-pwsh scripts/ship.ps1 <branch>        # Windows dev PC: & "scripts\ship.ps1" <branch> from PowerShell
+pwsh -NoProfile -File scripts/ship.ps1 -Branch <branch>
 ```
+Use PowerShell 7 (`pwsh`). Windows PowerShell 5 (`powershell`) turns git's harmless `remote:` stderr line into a fatal error and stops after the push.
 It refuses to run with uncommitted changes, re-runs tests + lint, merges into `dev`, waits for **Build Verification**, merges into `main`, waits for **Deploy to Doodlab** (which waits for the bot to write a fresh `data/ready.json` and rolls back to the previous release if it doesn't within 120 s), then prints the service state. Run it in the background for long waits and keep working on files that the branch switch won't touch (new untracked files are safe; tracked files are not, because the script checks out `dev` and `main`).
 
 If dev CI fails: read the failing step (`Invoke-RestMethod <run.jobs_url>`), fix on the branch, commit, ship again. Common: privacy guard tripped by a 17–20 digit number in a test.

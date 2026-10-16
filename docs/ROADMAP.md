@@ -99,6 +99,21 @@ Deliverable also includes the `add-ai-tool` skill (written once the registry's r
 - [x] Deploy health check: waits for `data/ready.json` after the restart (120 s) and rolls back to the snapshotted previous release (code + venv) if it never appears; `simulate_failure` dispatch input to test it.
 - [x] Deploy path from the `DEPLOY_PATH` repository variable (defaults to the current path).
 
+## Ideas (not scheduled)
+
+**Cave plans game nights himself.** Needs the details hashed out with the owner first:
+- Trigger: only when asked ("Cave, set up game night Friday"), or does he propose one when he sees the group online/idle? Proposing unprompted needs a per-server opt-in like announcements.
+- Who's invited and how he learns availability: a poll of time slots, the scheduled event's Interested list, or past attendance (`game_night_attendance`).
+- What he decides alone vs. with a confirm card (creating the Discord event is a side effect, so a `ConfirmView` like `add_game`).
+- Picking: today's `pick_games` (fits the head count, rating-weighted) plus what the group has played recently, and hype/reminders before the start.
+- A `plan_game_night` agent tool wrapping `/gamenight`, with a routing-list line and a `route_bench.py` case.
+
+**DJ transitions between tracks.** Crossfade the end of one song into the next, matching tempo: detect BPM (e.g. librosa/aubio on the buffered file, cached per track), time-stretch the incoming track toward the outgoing BPM (ffmpeg `atempo`/`rubberband`) and ramp it back, beat-align the overlap, then mix in one ffmpeg process (`acrossfade`). Needs both tracks as local files (the HLS buffering path already does this) and only makes sense for mixes/radios, not single requests. Start with plain crossfades, add BPM matching after.
+
+**Requests while music is playing.** Today a request joins the end of the queue, which can mean waiting behind a 40-track album or a radio. Option: a single user request goes ahead of auto-generated tracks (mix/radio/album fill) but after other user requests.
+
+**Event-loop stalls.** On 2026-10-16 at 15:25 the loop was blocked for 10+ s in trivial calls (`aiosqlite.connect`, an `os.stat` while formatting a log line), which dropped voice and caused "database is locked" in the Test Chamber/announcement loops. Looks like the server was starved (memory/swap or disk I/O); check `vmstat`/`iostat`/journal around a repeat before changing code.
+
 ---
 
 ## Kickoff prompts
