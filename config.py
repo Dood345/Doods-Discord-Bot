@@ -130,6 +130,9 @@ class BotConfig:
     # Embedding model for recalling old chats (e.g. nomic-embed-text); unset disables recall
     OLLAMA_EMBED_MODEL = os.getenv('OLLAMA_EMBED_MODEL')
 
+    # Local timezone for daily things (activity points, Daily Test Chamber)
+    BOT_TIMEZONE = os.getenv('BOT_TIMEZONE', 'America/Chicago')
+
     # Music Configuration
     MUSIC_DEFAULT_VOLUME = float(os.getenv('MUSIC_DEFAULT_VOLUME', '0.5'))
     MUSIC_TTS_VOICE = os.getenv('MUSIC_TTS_VOICE', 'en-US-ChristopherNeural')

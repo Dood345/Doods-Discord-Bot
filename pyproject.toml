@@ -19,7 +19,8 @@ dependencies = [
     "bgutil-ytdlp-pot-provider",
     "deno",
     "edge-tts",
-    "aiosqlite"
+    "aiosqlite",
+    "tzdata>=2026.5",
 ]
 
 [dependency-groups]

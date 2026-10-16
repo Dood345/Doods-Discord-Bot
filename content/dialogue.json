@@ -61,6 +61,13 @@
       "🎙️ One experiment at a time, test subject! The lab boys are still mopping up your last one.",
       "🎙️ Whoa there. The science furnace needs a few seconds to cool between questions.",
       "🎙️ Patience, volunteer. Even genius has a queue."
+    ],
+    "points_empty": [
+      "{name} has zero Science Points. Zero! Even the potato battery has points.",
+      "No Science Points on file for {name}. Show up, participate, and maybe don't touch the turrets."
+    ],
+    "leaderboard_empty": [
+      "Nobody has earned a single Science Point. Disgraceful. Somebody say something!"
     ]
   },
   "hank": {

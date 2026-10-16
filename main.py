@@ -28,11 +28,13 @@ from commands.homelab_commands import HomeLabCommands
 from commands.image_cog import ImageCog
 from commands.music import MusicCommands
 from commands.context_menus import ContextMenus
+from commands.points_commands import PointsCommands
 from services.gift_service import GiftService
 from services.game_service import GameService
 from services.homelab_service import HomelabService
 from services.image_service import ImageService
 from services.music_library import MusicLibrary
+from services.points_service import PointsService
 
 # Setup logging
 setup_logging()
@@ -67,6 +69,7 @@ class DoodsBot(commands.Bot):
         self.game_service = GameService(self.db, self.dialogue)
         self.homelab_service = HomelabService()
         self.music_library = MusicLibrary()
+        self.points_service = PointsService(self.db)
         
         self.ai_handler = AIHandler(self.db, self)
         self.image_service = ImageService(self.ai_handler)
@@ -90,6 +93,7 @@ class DoodsBot(commands.Bot):
         await self.add_cog(ImageCog(self))
         await self.add_cog(MusicCommands(self))
         await self.add_cog(ContextMenus(self))
+        await self.add_cog(PointsCommands(self))
         
         logger.info("All cogs loaded successfully")
     
@@ -111,6 +115,14 @@ class DoodsBot(commands.Bot):
         
         # Handle reactions
         await self.reaction_handler.handle_message(message)
+
+        # Science Points: +1 for showing up (first message of the day per server)
+        if message.guild and not message.author.bot:
+            try:
+                if await self.points_service.record_activity(message.guild.id, message.author.id):
+                    await message.add_reaction("🏆")  # new achievement; details in /points
+            except Exception as e:
+                logger.warning(f"Activity points failed: {e}")
 
         # Handle mentions (AI Chat)
         if self.user.mentioned_in(message) and not message.mention_everyone:

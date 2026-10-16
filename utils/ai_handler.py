@@ -313,6 +313,7 @@ UPDATED SUMMARY:"""
             - asks what GAME to play, or about the game library -> recommend_games / list_game_tags
             - asks to add a game, or shares a Steam/Epic store link -> add_game (pass the link)
             - gives a game a score/rating out of 10 -> rate_game
+            - asks about their Science Points, rank, achievements, or who's winning -> science_points
             - asks you to draw/make/generate a picture or image -> generate_image
             - tells you a preference or fact about themselves, or asks you to remember -> remember_fact
             - asks about the network, servers, printer, downloads, movies/shows -> the homelab tools

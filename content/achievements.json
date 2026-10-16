@@ -1,0 +1,9 @@
+[
+  {"id": "first_test", "name": "First Test", "emoji": "🧪", "description": "Earn your first Science Point", "type": "points", "threshold": 1},
+  {"id": "lab_regular", "name": "Lab Regular", "emoji": "🥼", "description": "Show up on 7 different days", "type": "reason_count", "reason": "activity", "threshold": 7},
+  {"id": "tenured", "name": "Tenured Test Subject", "emoji": "📅", "description": "Show up on 30 different days", "type": "reason_count", "reason": "activity", "threshold": 30},
+  {"id": "quickest_draw", "name": "Quickest Draw", "emoji": "⚡", "description": "First correct answer in a Daily Test Chamber", "type": "reason_count", "reason": "trivia_first", "threshold": 1},
+  {"id": "chamber_19", "name": "Survived Test Chamber 19", "emoji": "🔥", "description": "Answer 19 Daily Test Chambers correctly", "type": "reason_count", "reason": "trivia", "threshold": 19},
+  {"id": "employee_of_the_month", "name": "Employee of the Month", "emoji": "🏅", "description": "Reach 100 Science Points", "type": "points", "threshold": 100},
+  {"id": "shareholder", "name": "Aperture Shareholder", "emoji": "💰", "description": "Reach 500 Science Points", "type": "points", "threshold": 500}
+]

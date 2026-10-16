@@ -46,6 +46,23 @@ class DatabaseHandler:
                              vector BLOB)''')
                 await conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_embeddings_user ON ai_embeddings (user_id)")
 
+                # Science Points: append-only ledger per server; award_key makes each award idempotent
+                await conn.execute('''CREATE TABLE IF NOT EXISTS science_points
+                            (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                             guild_id INTEGER,
+                             user_id INTEGER,
+                             amount INTEGER,
+                             reason TEXT,
+                             award_key TEXT UNIQUE,
+                             created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+                await conn.execute("CREATE INDEX IF NOT EXISTS idx_science_points_guild_user ON science_points (guild_id, user_id)")
+                await conn.execute('''CREATE TABLE IF NOT EXISTS achievements
+                            (guild_id INTEGER,
+                             user_id INTEGER,
+                             achievement_id TEXT,
+                             earned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                             PRIMARY KEY (guild_id, user_id, achievement_id))''')
+
                 # Long-term facts a user asked Cave to remember (global per user, like ai_history)
                 await conn.execute('''CREATE TABLE IF NOT EXISTS user_facts
                             (id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -394,6 +411,90 @@ class DatabaseHandler:
                 await conn.commit()
         except Exception as e:
             logger.error(f"Failed to save AI summary: {e}")
+
+    # --- Science Points ---
+    async def award_points(self, guild_id: int, user_id: int, amount: int, reason: str, award_key: str) -> bool:
+        """Add a ledger row; False if this award_key was already used (or on error)."""
+        try:
+            async with self.get_connection() as conn:
+                cursor = await conn.execute(
+                    "INSERT OR IGNORE INTO science_points (guild_id, user_id, amount, reason, award_key) VALUES (?, ?, ?, ?, ?)",
+                    (guild_id, user_id, amount, reason, award_key))
+                await conn.commit()
+                return cursor.rowcount == 1
+        except Exception as e:
+            logger.error(f"Failed to award points: {e}")
+            return False
+
+    async def get_points(self, guild_id: int, user_id: int) -> int:
+        try:
+            async with self.get_connection() as conn:
+                async with conn.execute("SELECT COALESCE(SUM(amount), 0) FROM science_points WHERE guild_id = ? AND user_id = ?",
+                                        (guild_id, user_id)) as cursor:
+                    return (await cursor.fetchone())[0]
+        except Exception as e:
+            logger.error(f"Failed to get points: {e}")
+            return 0
+
+    async def count_awards(self, guild_id: int, user_id: int, reason_prefix: str) -> int:
+        try:
+            async with self.get_connection() as conn:
+                async with conn.execute("SELECT COUNT(*) FROM science_points WHERE guild_id = ? AND user_id = ? AND reason LIKE ?",
+                                        (guild_id, user_id, f"{reason_prefix}%")) as cursor:
+                    return (await cursor.fetchone())[0]
+        except Exception as e:
+            logger.error(f"Failed to count awards: {e}")
+            return 0
+
+    async def get_leaderboard(self, guild_id: int, limit: int = 10) -> List[Tuple[int, int]]:
+        """[(user_id, points)] for a server, highest first."""
+        try:
+            async with self.get_connection() as conn:
+                async with conn.execute(
+                    "SELECT user_id, SUM(amount) AS total FROM science_points WHERE guild_id = ? "
+                    "GROUP BY user_id HAVING total > 0 ORDER BY total DESC, MIN(id) LIMIT ?", (guild_id, limit)) as cursor:
+                    return [(r[0], r[1]) for r in await cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Failed to get leaderboard: {e}")
+            return []
+
+    async def get_rank(self, guild_id: int, user_id: int) -> Optional[int]:
+        """1-based rank on the server's leaderboard, or None with no points."""
+        points = await self.get_points(guild_id, user_id)
+        if points <= 0:
+            return None
+        try:
+            async with self.get_connection() as conn:
+                async with conn.execute(
+                    "SELECT COUNT(*) FROM (SELECT SUM(amount) AS total FROM science_points WHERE guild_id = ? "
+                    "GROUP BY user_id HAVING total > ?)", (guild_id, points)) as cursor:
+                    return (await cursor.fetchone())[0] + 1
+        except Exception as e:
+            logger.error(f"Failed to get rank: {e}")
+            return None
+
+    async def grant_achievement(self, guild_id: int, user_id: int, achievement_id: str) -> bool:
+        """True if newly granted."""
+        try:
+            async with self.get_connection() as conn:
+                cursor = await conn.execute(
+                    "INSERT OR IGNORE INTO achievements (guild_id, user_id, achievement_id) VALUES (?, ?, ?)",
+                    (guild_id, user_id, achievement_id))
+                await conn.commit()
+                return cursor.rowcount == 1
+        except Exception as e:
+            logger.error(f"Failed to grant achievement: {e}")
+            return False
+
+    async def get_achievements(self, guild_id: int, user_id: int) -> List[str]:
+        try:
+            async with self.get_connection() as conn:
+                async with conn.execute("SELECT achievement_id FROM achievements WHERE guild_id = ? AND user_id = ? ORDER BY earned_at",
+                                        (guild_id, user_id)) as cursor:
+                    return [r[0] for r in await cursor.fetchall()]
+        except Exception as e:
+            logger.error(f"Failed to get achievements: {e}")
+            return []
 
     # --- Long-term user facts ---
     MAX_USER_FACTS = 20

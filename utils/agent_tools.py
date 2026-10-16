@@ -93,6 +93,22 @@ async def _rate_game(ctx: ToolContext, title: str, score: int) -> str:
     return msg
 
 
+async def _science_points(ctx: ToolContext) -> str:
+    points_service = getattr(ctx.bot, "points_service", None)
+    if points_service is None:
+        return "The Science Points system is offline."
+    points, rank, achievements = await points_service.profile(ctx.guild.id, ctx.user.id)
+    mine = (f"{ctx.user.display_name} has {points} Science Points (rank #{rank})"
+            + (f" and achievements: {', '.join(a.name for a in achievements)}" if achievements else "")
+            if points > 0 else f"{ctx.user.display_name} has no Science Points yet")
+    board = await points_service.leaderboard(ctx.guild.id, limit=5)
+    names = []
+    for i, (uid, pts) in enumerate(board, 1):
+        member = ctx.guild.get_member(uid) if hasattr(ctx.guild, "get_member") else None
+        names.append(f"{i}. {member.display_name if member else 'a former test subject'} ({pts})")
+    return mine + ". Top of this server's leaderboard: " + ("; ".join(names) if names else "nobody yet") + "."
+
+
 def _to_int(value, default: int) -> int:
     try:
         return max(1, min(int(value), 100))
@@ -290,6 +306,12 @@ def build_cave_tools() -> ToolRegistry:
                 "title": {"type": "string", "description": "The game's name"},
                 "score": {"type": "integer", "description": "Rating from 1 to 10"},
             }, "required": ["title", "score"]},
+            requires_guild=True,
+        ),
+        Tool(
+            name="science_points",
+            description="The user's Science Points, rank and achievements in this server, plus the top of the leaderboard.",
+            handler=_science_points,
             requires_guild=True,
         ),
         Tool(
