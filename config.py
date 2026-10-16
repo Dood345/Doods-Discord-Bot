@@ -130,6 +130,10 @@ class BotConfig:
     # Embedding model for recalling old chats (e.g. nomic-embed-text); unset disables recall
     OLLAMA_EMBED_MODEL = os.getenv('OLLAMA_EMBED_MODEL')
 
+    # Steam library import (utils/import_steam_library.py)
+    STEAM_API_KEY = os.getenv('STEAM_API_KEY')
+    STEAM_ID = os.getenv('STEAM_ID')  # SteamID64 or vanity name
+
     # Local timezone for daily things (activity points, Daily Test Chamber)
     BOT_TIMEZONE = os.getenv('BOT_TIMEZONE', 'America/Chicago')
 
