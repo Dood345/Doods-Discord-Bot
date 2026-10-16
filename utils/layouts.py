@@ -34,6 +34,11 @@ class Card(ui.LayoutView):
             raise ValueError(f"layout text is {self.content_length()} chars (max {MAX_TEXT})")
 
 
+def card_text(view: ui.LayoutView) -> str:
+    """All the text of a v2 card, in order (for tests and logs)."""
+    return "\n".join(item.content for item in view.walk_children() if isinstance(item, ui.TextDisplay))
+
+
 def text(content: str) -> ui.TextDisplay:
     return ui.TextDisplay(content)
 

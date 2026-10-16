@@ -35,6 +35,8 @@ Shared singletons are attached to the bot in `DoodsBot.__init__` and accessed by
 - `bot.ai_handler` — `AIHandler` (`utils/ai_handler.py`).
 - `bot.reaction_handler` — keyword emoji reactions from `config.KEYWORD_REACTIONS`.
 
+**Message layouts (Components v2):** `/queue`, `/points`, `/leaderboard`, `/game list`, `/gamenight`, `/printer` and the confirmation cards reply with `discord.ui.LayoutView` cards built by pure functions in `utils/layouts.py` (one accent-coloured `Container`; `card_text(view)` returns the text for tests). A v2 message can't carry `content` or embeds, and is capped at 40 components / 4000 text chars (builders budget with `fit_lines`; `Card` raises if exceeded). Unlike embeds, mentions inside a `TextDisplay` ping, so every card send passes `allowed_mentions=discord.AllowedMentions.none()`. Attachments show via `MediaGallery` with `attachment://<filename>`. Thumbnails only ever use Discord CDN avatars or `i.ytimg.com`, never a LAN/Plex URL. The Test Chamber question stays a classic message with `ChamberButton` DynamicItems.
+
 Unhandled errors from slash commands/context menus (`tree.on_error`), prefix commands and events (`Bot.on_error`) go through `utils/error_reporting.py`: full traceback in the log, the user gets an ephemeral "something broke", and the owner gets a DM (one per distinct error per 15 min, with tokens, keys, URLs and IPs scrubbed).
 
 Cogs live in `commands/`; each module is a discord.py extension (`async def setup(bot)` that `add_cog`s it) and is loaded by `DoodsBot.setup_hook()` from `EXTENSIONS` in `utils/hot_reload.py` (in that order) — a new cog module must be added there (a test checks every `commands/*.py` is listed). Most commands are slash commands (`app_commands`); prefix is `!`.

@@ -7,6 +7,7 @@ import logging
 import io
 from config import BotConfig
 from utils.auth import is_authorized
+from utils.layouts import printer_card
 
 logger = logging.getLogger(__name__)
 
@@ -111,40 +112,19 @@ class HomeLabCommands(commands.Cog):
             await interaction.followup.send("⚠️ The printer isn't answering. It may be off, or Moonraker is restarting.")
             return
 
-        printing = status["state"] == "printing"
-        color = {"printing": 0x2ecc71, "paused": 0xf1c40f, "error": 0xe74c3c}.get(status["state"], 0x95a5a6)
-        embed = discord.Embed(title="🖨️ 3D Printer Status", color=color)
-        embed.add_field(name="State", value=status["state"].upper(), inline=True)
-        if printing or status["state"] == "paused":
-            embed.add_field(name="File", value=status["filename"] or "?", inline=True)
-            embed.add_field(name="Progress", value=f"{status['progress']}%", inline=True)
-            embed.add_field(name="Elapsed", value=status["duration"], inline=True)
-            if status["remaining"]:
-                embed.add_field(name="Left (approx.)", value=status["remaining"], inline=True)
-            if status["layer"]:
-                embed.add_field(name="Layer", value=f"{status['layer'][0]}/{status['layer'][1]}", inline=True)
-        if status["temps"]:
-            embed.add_field(name="Temps", value="\n".join(
-                f"{name.title()}: {cur}°C" + (f" → {tgt}°C" if tgt else "") for name, (cur, tgt) in status["temps"].items()),
-                inline=False)
-        if status["filament_detected"] is False:
-            embed.add_field(name="⚠️ Filament", value="Sensor reports no filament", inline=False)
-        if status["message"]:
-            embed.set_footer(text=status["message"][:200])
-
-        files = []
+        files, note = [], None
         if video:
             clip = await printer.clip()
             if clip:
                 files.append(discord.File(io.BytesIO(clip), filename="printer.mp4"))
             else:
-                embed.set_footer(text="Couldn't record a clip from the webcam stream.")
+                note = "Couldn't record a clip from the webcam stream."
         else:
             snap = await printer.snapshot()
             if snap:
                 files.append(discord.File(io.BytesIO(snap), filename="snapshot.jpg"))
-                embed.set_image(url="attachment://snapshot.jpg")
-        await interaction.followup.send(embed=embed, files=files)
+        card = printer_card(status, media_filename=files[0].filename if files else None, media_note=note)
+        await interaction.followup.send(view=card, files=files, allowed_mentions=discord.AllowedMentions.none())
 
     @app_commands.command(name="request", description="Search & Request media from Overseerr")
     async def request_media(self, interaction: discord.Interaction, query: str):

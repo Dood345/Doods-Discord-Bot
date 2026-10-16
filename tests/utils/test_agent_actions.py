@@ -60,7 +60,8 @@ async def test_confirm_runs_action_exactly_once():
     await view.confirm.callback(click(OWNER))
     action.assert_awaited_once()
     i.followup.send.assert_awaited_with("done")
-    assert all(item.disabled for item in view.children)
+    assert view.confirm.disabled and view.cancel.disabled
+    assert "Confirmed" in view.body.content
 
 
 async def test_cancel_and_failed_check_run_nothing():
@@ -68,6 +69,7 @@ async def test_cancel_and_failed_check_run_nothing():
     view = ConfirmView(OWNER.id, action)
     await view.cancel.callback(click(OWNER))
     action.assert_not_awaited()
+    assert "Cancelled" in view.body.content
 
     view = ConfirmView(OWNER.id, action, check=AsyncMock(return_value="nope"))
     i = click(OWNER)
@@ -77,11 +79,12 @@ async def test_cancel_and_failed_check_run_nothing():
 
 
 async def test_timeout_disables_and_marks_expired():
-    view = ConfirmView(OWNER.id, AsyncMock())
-    view.message = SimpleNamespace(content="card", edit=AsyncMock())
+    view = ConfirmView(OWNER.id, AsyncMock(), text="card")
+    view.message = SimpleNamespace(edit=AsyncMock())
     await view.on_timeout()
-    assert "Expired" in view.message.edit.call_args.kwargs["content"]
-    assert all(item.disabled for item in view.children)
+    assert view.message.edit.call_args.kwargs["view"] is view
+    assert view.body.content.startswith("card") and "Expired" in view.body.content
+    assert view.confirm.disabled and view.cancel.disabled
 
 
 async def test_post_confirmation_dedupes_and_needs_channel():
@@ -91,6 +94,8 @@ async def test_post_confirmation_dedupes_and_needs_channel():
     assert first.startswith("PENDING") and "NOTHING has happened" in first
     assert "already posted" in second
     assert ctx.channel.send.await_count == 1
+    assert last_view(ctx.channel).body.content == "card"
+    assert "content" not in ctx.channel.send.call_args.kwargs and not ctx.channel.send.call_args.args  # v2 card only
     no_channel = ToolContext(bot=None, user=OWNER, guild=GUILD, channel=None)
     assert "ERROR" in await post_confirmation(no_channel, "k", "card", AsyncMock())
 
@@ -106,7 +111,7 @@ async def test_add_game_waits_for_click(temp_db):
 
     assert result.startswith("PENDING")
     assert await temp_db.search_game_titles("Val", 99) == []      # nothing yet
-    assert "2-10 players" in ctx.channel.send.call_args.args[0]    # swapped + coerced
+    assert "2-10 players" in last_view(ctx.channel).body.content    # swapped + coerced
     await last_view(ctx.channel).confirm.callback(click(STRANGER))
     assert await temp_db.search_game_titles("Val", 99) == ["Valheim"]
 
@@ -123,7 +128,7 @@ async def test_media_tools_hidden_and_click_rechecks_auth():
 
     result = await reg.dispatch("request_media", {"tmdb_id": 438631, "media_type": "movie"}, ctx)
     assert result.startswith("PENDING")
-    assert "Dune (2021)" in ctx.channel.send.call_args.args[0]
+    assert "Dune (2021)" in last_view(ctx.channel).body.content
     homelab.request_media.assert_not_awaited()
 
     # Owner loses clearance before clicking -> nothing is requested

@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 import discord
 
 from commands.game_night import GameNight
+from utils.layouts import card_text
 from services.game_night_service import parse_start, pick_games
 
 TZ = ZoneInfo("America/Chicago")
@@ -54,7 +55,8 @@ async def test_gamenight_posts_picks_poll_and_event(temp_db):
                         response=SimpleNamespace(defer=AsyncMock(), send_message=AsyncMock()), followup=SimpleNamespace(send=sent))
 
     await GameNight.gamenight.callback(cog, i, start="9pm")
-    text = sent.call_args_list[0].args[0]
+    text = card_text(sent.call_args_list[0].kwargs["view"])
+    assert sent.call_args_list[0].kwargs["allowed_mentions"].users is False
     assert "2 players" in text and "GAME NIGHT, LAB BOYS!" in text and "Rust" not in text
     assert "Event created" in text
     kwargs = guild.create_scheduled_event.call_args.kwargs
