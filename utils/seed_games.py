@@ -2,7 +2,11 @@ import sqlite3
 import sys
 import io
 import asyncio
-from database import DatabaseHandler
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # repo root
+from utils.database import DatabaseHandler  # noqa: E402
 
 # Force UTF-8 encoding for stdout
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')

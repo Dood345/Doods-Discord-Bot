@@ -1,5 +1,9 @@
 import asyncio
-from database import DatabaseHandler
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # repo root
+from utils.database import DatabaseHandler  # noqa: E402
 
 async def verify():
     db = DatabaseHandler()

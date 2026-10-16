@@ -1,8 +1,12 @@
+import asyncio
+
 import aiosqlite
 import logging
 import os
 from datetime import datetime
 from typing import List, Tuple, Optional, Dict
+
+from utils import migrations
 
 logger = logging.getLogger(__name__)
 
@@ -15,58 +19,15 @@ class DatabaseHandler:
     def get_connection(self):
         return aiosqlite.connect(self.db_path)
     
-    # Tables whose old schema predates per-server data (no guild_id, globally UNIQUE names).
-    # CREATE TABLE IF NOT EXISTS never changes an existing table, so they're rebuilt once.
-    LEGACY_PER_SERVER_TABLES = ("games", "tags")
-
-    @staticmethod
-    async def _columns(conn, table: str) -> List[str]:
-        async with conn.execute(f"PRAGMA table_info({table})") as cursor:
-            return [row[1] for row in await cursor.fetchall()]
-
-    async def _set_aside_legacy_tables(self, conn) -> List[str]:
-        """Rename pre-guild_id tables to <name>_legacy so the current schema can be created."""
-        moved = []
-        for table in self.LEGACY_PER_SERVER_TABLES:
-            cols = await self._columns(conn, table)
-            if cols and "guild_id" not in cols:
-                # legacy_alter_table keeps game_tags' foreign keys pointing at the name "games"/"tags"
-                await conn.execute("PRAGMA legacy_alter_table = ON")
-                await conn.execute(f"ALTER TABLE {table} RENAME TO {table}_legacy")
-                await conn.execute("PRAGMA legacy_alter_table = OFF")
-                moved.append(table)
-                logger.warning(f"Migrating legacy '{table}' table to the per-server schema")
-        return moved
-
-    async def _restore_legacy_rows(self, conn, tables: List[str]):
-        """Copy rows from the set-aside tables (ids kept, guild_id 0 = shared by every server), then drop them."""
-        for table in tables:
-            new_cols = await self._columns(conn, table)
-            old_cols = await self._columns(conn, f"{table}_legacy")
-            shared = [c for c in old_cols if c in new_cols and c != "guild_id"]
-            col_list = ", ".join(shared)
-            await conn.execute(f"INSERT OR IGNORE INTO {table} ({col_list}, guild_id) "
-                               f"SELECT {col_list}, 0 FROM {table}_legacy")
-            await conn.execute(f"DROP TABLE {table}_legacy")
-
-    async def _separate_dm_memory(self, conn, had_dm_summaries: bool):
-        """One-time upgrade for DBs from before DM memory was kept apart from server memory."""
-        if "is_dm" not in await self._columns(conn, "ai_embeddings"):
-            await conn.execute("ALTER TABLE ai_embeddings ADD COLUMN is_dm INTEGER DEFAULT 0")
-            await conn.execute("UPDATE ai_embeddings SET is_dm = 1 WHERE history_id IN "
-                               "(SELECT id FROM ai_history WHERE guild_id IS NULL)")
-        if "is_dm" not in await self._columns(conn, "user_facts"):
-            # Where old notes were saved wasn't recorded; they stay visible everywhere
-            await conn.execute("ALTER TABLE user_facts ADD COLUMN is_dm INTEGER DEFAULT 0")
-        if not had_dm_summaries:
-            # Old summaries mixed DM and server chat: rebuild them per scope on the next chat
-            await conn.execute("DELETE FROM ai_summaries")
-
     async def setup_tables(self):
-        """Initialize all database tables, now including the Recreation Repository."""
+        """Create missing tables in their current shape, then run pending migrations (utils/migrations.py)."""
         try:
+            version, has_tables = await asyncio.to_thread(migrations.current_version_sync, self.db_path)
+            if has_tables and version < migrations.LATEST:
+                path = await asyncio.to_thread(migrations.backup, self.db_path)
+                logger.info(f"Backed up the database before migrating: {path}")
             async with self.get_connection() as conn:
-                legacy = await self._set_aside_legacy_tables(conn)
+                existed_before = await migrations.table_names(conn)
                 # --- Existing Tables ---
                 await conn.execute('''CREATE TABLE IF NOT EXISTS gifts
                             (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, guild_id INTEGER, item_name TEXT, link TEXT, claimed_by INTEGER)''')
@@ -173,35 +134,16 @@ class DatabaseHandler:
                              is_dm INTEGER DEFAULT 0)''')
 
                 # DM conversations get their own rolling summary, so server chats never see them
-                had_dm_summaries = bool(await self._columns(conn, "ai_dm_summaries"))
                 await conn.execute('''CREATE TABLE IF NOT EXISTS ai_dm_summaries
                             (user_id INTEGER PRIMARY KEY,
                              summary TEXT,
                              last_id INTEGER,
                              updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
-                await self._separate_dm_memory(conn, had_dm_summaries)
                 
                 # --- NEW: Games Repository ---
                 # Status: 'seen', 'played', 'playing', 'wishlist'
                 # Added: external_rating
-                await conn.execute('''CREATE TABLE IF NOT EXISTS games
-                            (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                             title TEXT,
-                             category TEXT,
-                             min_players INTEGER,
-                             max_players INTEGER,
-                             ideal_players INTEGER,
-                             status TEXT DEFAULT 'unknown',
-                             external_rating TEXT,
-                             notes TEXT,
-                             release_date TEXT,
-                             release_state TEXT,
-                             last_update TEXT,
-                             store_link TEXT,
-                             added_by INTEGER,
-                             guild_id INTEGER,
-                             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                             UNIQUE(title, guild_id))''')
+                await conn.execute(migrations.GAMES_SQL.format(table="games"))
 
                 # --- NEW: Ratings/Votes ---
                 # One rating per user per game per server
@@ -215,12 +157,7 @@ class DatabaseHandler:
 
                 # --- NEW: Tagging System (Normalized) ---
                 # 1. Tags Table: Stores unique tag names
-                await conn.execute('''CREATE TABLE IF NOT EXISTS tags
-                            (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                             name TEXT,
-                             guild_id INTEGER,
-                             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                             UNIQUE(name, guild_id))''')
+                await conn.execute(migrations.TAGS_SQL.format(table="tags"))
 
                 # 2. Game_Tags Table: Links Games to Tags via IDs
                 await conn.execute('''CREATE TABLE IF NOT EXISTS game_tags
@@ -230,11 +167,13 @@ class DatabaseHandler:
                              FOREIGN KEY(game_id) REFERENCES games(id) ON DELETE CASCADE,
                              FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE)''')
 
-                await self._restore_legacy_rows(conn, legacy)
                 await conn.commit()
+                applied = await migrations.run_migrations(conn, existed_before)
+                if applied:
+                    logger.info(f"Database migrations applied: {applied}")
             logger.info("Aperture Science Database Tables Initialized.")
         except Exception as e:
-            logger.error(f"Database Initialization Failed: {e}")
+            logger.exception(f"Database Initialization Failed: {e}")
 
     # --- Game Methods ---
 

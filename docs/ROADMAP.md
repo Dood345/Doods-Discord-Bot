@@ -88,7 +88,7 @@ Deliverable also includes the `add-ai-tool` skill (written once the registry's r
 - Pin `discord.py` to a release instead of `@master`; adopt Components v2 (`LayoutView`) for richer embeds/menus.
 - Auto-load cogs from `commands/` as extensions + owner `!reload <cog>` for hot reload without restarting the service.
 - Typed settings (e.g. `pydantic-settings`) replacing the class-attribute `BotConfig`; validates `.env` on startup and logs what's disabled.
-- DB: `schema_version` table + tiny migration runner (today it's `CREATE TABLE IF NOT EXISTS` only, so column changes need manual SQL).
+- [x] DB: `schema_version` + migration runner (`utils/migrations.py`) with automatic pre-migration backups, tested against production's real schema.
 - `ruff` (lint + format) in CI and a pre-commit hook.
 - Error reporting: unhandled app-command errors DM the owner with a traceback summary; global `tree.on_error` handler (today only prefix-command errors are handled).
 - Tests for cogs using lightweight interaction fakes.

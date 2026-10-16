@@ -13,6 +13,10 @@ db_path = 'data/doodlab.db'
 
 
 if os.path.exists(db_path):
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # repo root
+    from utils.migrations import backup
+    print(f"Backed up to {backup(db_path, label='pre-reset')}")
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
     try:
