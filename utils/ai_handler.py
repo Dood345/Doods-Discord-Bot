@@ -99,6 +99,16 @@ class AIHandler:
                 data = await resp.json()
                 return data.get("response", "")
     
+    async def complete(self, prompt: str) -> Optional[str]:
+        """One-shot completion for services (debates etc.); None if AI is off or the call fails."""
+        if not self.is_available():
+            return None
+        try:
+            return (await self._generate(prompt)).strip() or None
+        except Exception as e:
+            logger.error(f"AI completion failed: {e}")
+            return None
+
     async def get_character_response(self, character: str, user_input: str) -> Optional[str]:
         """Get AI response for a specific character"""
         if not self.is_available() or character not in self.config.PERSONAS:

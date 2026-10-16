@@ -9,7 +9,10 @@ from discord import app_commands
 from discord.ext import commands
 import random
 import logging
+from datetime import timedelta
 from typing import List
+
+from services.debate_service import DebateService
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +21,7 @@ class CharacterCommands(commands.Cog):
         self.bot = bot
         self.config = bot.config
         self.ai_handler = bot.ai_handler
+        self.debates = DebateService(bot.ai_handler, bot.config.PERSONAS)
 
     async def _get_character_response(self, character: str, user_input: str = None):
         """Get a response from a character, AI first then fallback"""
@@ -57,6 +61,42 @@ class CharacterCommands(commands.Cog):
             await interaction.response.send_message(f"❓ Never heard of them. Try one of: {names}", ephemeral=True)
             return
         await self._respond(interaction, key, prompt)
+
+    @app_commands.command(name='debate', description="Two characters argue a topic for 3 rounds, then the server votes")
+    @app_commands.describe(character="First debater", topic="What they argue about",
+                           opponent="Second debater (random if left out)")
+    @app_commands.autocomplete(character=character_autocomplete, opponent=character_autocomplete)
+    async def debate_command(self, interaction: discord.Interaction, character: str, topic: str, opponent: str = None):
+        a = self.find_persona(character)
+        b = self.find_persona(opponent) if opponent else (self.debates.pick_opponent(a) if a else None)
+        if a is None or b is None:
+            await interaction.response.send_message("❓ I need two real characters. Pick them from the list.", ephemeral=True)
+            return
+        if a == b:
+            await interaction.response.send_message("🪞 A debate against yourself is called a diary.", ephemeral=True)
+            return
+        if not self.debates.try_start(interaction.channel_id):
+            await interaction.response.send_message("🎤 A debate is already running in this channel.", ephemeral=True)
+            return
+        try:
+            await interaction.response.defer()
+            first, second = self.config.PERSONAS[a], self.config.PERSONAS[b]
+            topic = " ".join(topic.split())[:200]
+            await interaction.followup.send(
+                f"🎤 **FACILITY SHOWDOWN** 🎤\n{first.label} vs {second.label}\n**Topic:** {topic}")
+            spoken = 0
+            async for speaker, line in self.debates.run(a, b, topic):
+                await interaction.followup.send(f"{speaker.label}: {line}")
+                spoken += 1
+            if spoken < 2:
+                await interaction.followup.send("⚠️ The debate collapsed before it started. The lab boys blame the AI core.")
+                return
+            poll = discord.Poll(question=f"Who won? {topic}"[:300], duration=timedelta(hours=1))
+            for p in (first, second):
+                poll.add_answer(text=p.name[:55], emoji=p.emoji)
+            await interaction.followup.send(poll=poll)
+        finally:
+            self.debates.finish(interaction.channel_id)
 
     # --- Legacy per-character commands (aliases for /ask) ---
 

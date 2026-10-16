@@ -74,7 +74,7 @@ Deliverable also includes the `add-ai-tool` skill (written once the registry's r
 - **Library-first music.** ✅ Cave's song requests try Plex → SoundCloud → YouTube search; YouTube links still go to YouTube. Artist requests queue a mix; "radio" requests mix in similar artists from the library (#90). `/play` uses the same routing (plus a `radio` option); links and `playlist-only` still go to YouTube.
 
 - **One character command, data-driven personas.** ✅ `/ask character:` + `content/personas.json`; fallback lines stay in `dialogue.json` under the same key. Replace nine near-identical `/hank`, `/dale`, … commands with `/ask character:<autocomplete> prompt:` backed by a persona file (prompt, emoji, fallback lines, reactions). Adding a character = editing data. Keep old commands as aliases for a release.
-- **Character showdowns.** `/debate hank cartman topic:` — two personas argue for 3 rounds, server votes with a native Discord poll.
+- **Character showdowns.** ✅ `/debate` (`services/debate_service.py`, ~16 s for 3 rounds, one per channel, 1-hour poll). `/debate hank cartman topic:` — two personas argue for 3 rounds, server votes with a native Discord poll.
 - **Context-menu commands.** Right-click a message → "Ask Cave about this", "Roast this", "Fact-check (Dale edition)".
 - **Science Points economy.** XP for participating, trivia wins, game-night attendance; `/leaderboard`; Aperture-themed achievements ("Survived Test Chamber 19").
 - **Daily Test Chamber.** Scheduled daily trivia or riddle (`tasks.loop`), first correct answer gets points; Cave announces winners in character.
