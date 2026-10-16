@@ -5,7 +5,7 @@ description = "Aperture Science Mainframe Discord Bot"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "discord.py @ git+https://github.com/Rapptz/discord.py@master",
+    "discord.py[voice]==2.7.1",  # release with DAVE voice + Python 3.14 fixes; was @master
     "davey",
     "python-dotenv==1.0.0",
     "Flask==3.0.0",
