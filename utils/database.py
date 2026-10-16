@@ -63,6 +63,36 @@ class DatabaseHandler:
                              earned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                              PRIMARY KEY (guild_id, user_id, achievement_id))''')
 
+                # Per-server opt-in settings (e.g. the Daily Test Chamber channel)
+                await conn.execute('''CREATE TABLE IF NOT EXISTS guild_settings
+                            (guild_id INTEGER,
+                             key TEXT,
+                             value TEXT,
+                             PRIMARY KEY (guild_id, key))''')
+
+                # Daily Test Chamber: one trivia question per server per local day
+                await conn.execute('''CREATE TABLE IF NOT EXISTS trivia_questions
+                            (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                             guild_id INTEGER,
+                             local_date TEXT,
+                             question TEXT,
+                             choices TEXT,
+                             correct_index INTEGER,
+                             category TEXT,
+                             channel_id INTEGER,
+                             message_id INTEGER,
+                             closes_at TEXT,
+                             closed INTEGER DEFAULT 0,
+                             UNIQUE (guild_id, local_date))''')
+                await conn.execute('''CREATE TABLE IF NOT EXISTS trivia_answers
+                            (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                             question_id INTEGER,
+                             user_id INTEGER,
+                             choice INTEGER,
+                             correct INTEGER,
+                             answered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                             UNIQUE (question_id, user_id))''')
+
                 # Long-term facts a user asked Cave to remember (global per user, like ai_history)
                 await conn.execute('''CREATE TABLE IF NOT EXISTS user_facts
                             (id INTEGER PRIMARY KEY AUTOINCREMENT,

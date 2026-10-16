@@ -29,12 +29,14 @@ from commands.image_cog import ImageCog
 from commands.music import MusicCommands
 from commands.context_menus import ContextMenus
 from commands.points_commands import PointsCommands
+from commands.test_chamber import TestChamber
 from services.gift_service import GiftService
 from services.game_service import GameService
 from services.homelab_service import HomelabService
 from services.image_service import ImageService
 from services.music_library import MusicLibrary
 from services.points_service import PointsService
+from services.test_chamber_service import TestChamberService
 
 # Setup logging
 setup_logging()
@@ -70,6 +72,7 @@ class DoodsBot(commands.Bot):
         self.homelab_service = HomelabService()
         self.music_library = MusicLibrary()
         self.points_service = PointsService(self.db)
+        self.test_chamber = TestChamberService(self.db, self.points_service)
         
         self.ai_handler = AIHandler(self.db, self)
         self.image_service = ImageService(self.ai_handler)
@@ -94,6 +97,7 @@ class DoodsBot(commands.Bot):
         await self.add_cog(MusicCommands(self))
         await self.add_cog(ContextMenus(self))
         await self.add_cog(PointsCommands(self))
+        await self.add_cog(TestChamber(self))
         
         logger.info("All cogs loaded successfully")
     

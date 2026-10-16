@@ -1,0 +1,16 @@
+[
+  {"category": "Video Games", "question": "In Portal, what does GLaDOS promise you at the end of the tests?", "correct": "Cake", "wrong": ["A promotion", "Freedom", "A companion cube"]},
+  {"category": "Video Games", "question": "What is the name of the facility in the Portal series?", "correct": "Aperture Science Enrichment Center", "wrong": ["Black Mesa Research Facility", "Umbrella Corporation HQ", "Vault 101"]},
+  {"category": "Science", "question": "What is the chemical symbol for potassium?", "correct": "K", "wrong": ["P", "Po", "Pt"]},
+  {"category": "Science", "question": "Which planet has the most known moons?", "correct": "Saturn", "wrong": ["Jupiter", "Neptune", "Uranus"]},
+  {"category": "Science", "question": "What is propane's chemical formula?", "correct": "C3H8", "wrong": ["CH4", "C4H10", "C2H6"]},
+  {"category": "General Knowledge", "question": "How many sides does a hexagon have?", "correct": "6", "wrong": ["5", "7", "8"]},
+  {"category": "Video Games", "question": "In Deep Rock Galactic, what do the dwarves shout?", "correct": "Rock and Stone!", "wrong": ["For Karl!", "Mine on!", "Dig deeper!"]},
+  {"category": "Television", "question": "What does Hank Hill sell?", "correct": "Propane and propane accessories", "wrong": ["Lawn mowers", "Charcoal grills", "Pest control"]},
+  {"category": "History", "question": "In what year did the first crewed Moon landing happen?", "correct": "1969", "wrong": ["1965", "1972", "1959"]},
+  {"category": "Video Games", "question": "In Valheim, what are you sent to the tenth world to do?", "correct": "Prove yourself worthy of Valhalla", "wrong": ["Rescue Odin", "Rebuild Asgard", "Find the World Tree"]},
+  {"category": "Science", "question": "What is the hardest natural mineral?", "correct": "Diamond", "wrong": ["Quartz", "Corundum", "Topaz"]},
+  {"category": "General Knowledge", "question": "What is the largest ocean on Earth?", "correct": "Pacific Ocean", "wrong": ["Atlantic Ocean", "Indian Ocean", "Arctic Ocean"]},
+  {"category": "Computers", "question": "What does 'GPU' stand for?", "correct": "Graphics Processing Unit", "wrong": ["General Processing Unit", "Graphical Power Unit", "Gaming Performance Unit"]},
+  {"category": "Video Games", "question": "Which company makes the Half-Life and Portal games?", "correct": "Valve", "wrong": ["Bethesda", "id Software", "Blizzard"]}
+]
