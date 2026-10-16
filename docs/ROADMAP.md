@@ -16,7 +16,7 @@ Each phase is one or more PRs, branch → `dev` → `main`. Each phase ends with
 | #84 | Small permanent memory per user | 1d `user_facts` ✅ |
 | #90 | Radio toggle: start radio from one song | 2 (music) ✅ |
 | #100 | Game list should work with the per-channel/guild system | 2 (games) ✅ |
-| #103 | Adding a game by link auto-fills info (Steam/Epic) | 2 (games) + agent `add_game` tool |
+| #103 | Adding a game by link auto-fills info (Steam/Epic) | 2 (games) + agent `add_game` tool ✅ |
 | #48 | Gift claim shows item IDs publicly | 2 — privacy fix, use ephemeral replies / select menus ✅ |
 | #69 | Send a link to add to the print queue instead of a file | won't do: print settings vary too much per model |
 

@@ -1,14 +1,25 @@
 import logging
 from typing import List, Tuple, Optional, Dict, Any
 
+from services.store_lookup import StoreLookup
+
 logger = logging.getLogger(__name__)
 
 class GameService:
     """Service layer for handling game registry and library logic."""
     
-    def __init__(self, db, dialogue_manager):
+    def __init__(self, db, dialogue_manager, store_lookup=None):
         self.db = db
         self.dialogue = dialogue_manager
+        self.store_lookup = store_lookup or StoreLookup()
+
+    async def details_from_link(self, link: str, **overrides) -> Optional[Dict[str, Any]]:
+        """add_game fields from a Steam/Epic link, with any non-empty `overrides` winning. None if not a store link."""
+        info = await self.store_lookup.lookup(link)
+        if info is None:
+            return None
+        info.update({k: v for k, v in overrides.items() if v not in (None, "")})
+        return info
 
     async def search_game_titles(self, current: str, guild_id: int) -> List[str]:
         return await self.db.search_game_titles(current, guild_id)

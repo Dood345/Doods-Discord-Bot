@@ -54,10 +54,11 @@ class GameCommands(commands.Cog):
         app_commands.Choice(name="Early Access", value="early access"),
         app_commands.Choice(name="Full Release", value="full release")
     ])
-    async def add_game(self, interaction: discord.Interaction, 
-                       title: str, 
-                       min_players: int, 
-                       max_players: int,
+    @app_commands.describe(link="Steam or Epic store link: fills in title, players, tags and more automatically")
+    async def add_game(self, interaction: discord.Interaction,
+                       title: str = None,
+                       min_players: int = None,
+                       max_players: int = None,
                        link: str = None,
                        ideal_players: int = None,
                        status: app_commands.Choice[str] = None,
@@ -69,16 +70,34 @@ class GameCommands(commands.Cog):
                        release_date: str = None):
         """Add a game to the library"""
         await interaction.response.defer()
-        
+
+        fields = dict(title=title, min_players=min_players, max_players=max_players,
+                      release_state=release_state.value if release_state else None,
+                      external_rating=external_rating, category=category, release_date=release_date, tags=tags)
+        guessed_note = ""
+        if link:
+            filled = await self.game_service.details_from_link(link, **fields)
+            if filled:
+                if filled.pop("players_guessed", False) and min_players is None and max_players is None:
+                    guessed_note = "\n-# Player count guessed from the store page; fix it with /game update."
+                link = filled.pop("store_link")
+                fields = filled
+        if not fields.get("title"):
+            await interaction.followup.send(
+                "⚠️ Give me a title, or a Steam/Epic store link so I can fill it in myself.", ephemeral=True)
+            return
+        lo, hi = fields.pop("min_players") or 1, fields.pop("max_players") or 4
+
         success, message = await self.game_service.add_game(
-            title=title, added_by=interaction.user.id, guild_id=interaction.guild_id,
-            min_players=min_players, max_players=max_players, ideal_players=ideal_players,
-            store_link=link, status=status.value if status else 'unknown',
-            release_state=release_state.value if release_state else None,
-            external_rating=external_rating, notes=notes, category=category,
-            release_date=release_date, tags=tags
+            added_by=interaction.user.id, guild_id=interaction.guild_id,
+            min_players=min(lo, hi), max_players=max(lo, hi), ideal_players=ideal_players,
+            store_link=link, status=status.value if status else 'unknown', notes=notes, **fields
         )
-        
+
+        if success and link:
+            details = [f"{min(lo, hi)}-{max(lo, hi)} players", fields.get("release_state"),
+                       fields.get("external_rating"), fields.get("tags") and f"tags: {fields['tags']}"]
+            message += "\n-# " + " · ".join(d for d in details if d) + guessed_note
         await interaction.followup.send(message)
 
     @game_group.command(name="rate", description="Rate a simulation's testing viability")

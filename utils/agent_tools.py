@@ -102,20 +102,38 @@ def _to_int(value, default: int) -> int:
 
 # --- Side-effecting tools: each posts a confirm card; the action runs only when ctx.user clicks ---
 
-async def _add_game(ctx: ToolContext, title: str, min_players: int = 1, max_players: int = 4, tags: str = None) -> str:
-    title = " ".join(str(title).split())[:100]
+async def _add_game(ctx: ToolContext, title: str = None, min_players: int = None, max_players: int = None,
+                    tags: str = None, link: str = None) -> str:
+    extra = {}
+    if link:
+        # Store data beats the model's guesses; the model's values only fill gaps
+        info = await ctx.bot.game_service.details_from_link(str(link))
+        if info is None:
+            return "ERROR: that isn't a Steam or Epic store link. Ask for the game's name instead."
+        guessed = info.pop("players_guessed", False)
+        title = info.pop("title", None) or title
+        if not guessed or min_players is None:
+            min_players = info.pop("min_players", min_players)
+        if not guessed or max_players is None:
+            max_players = info.pop("max_players", max_players)
+        tags = info.pop("tags", None) or tags
+        extra = {k: v for k, v in info.items() if k in ("store_link", "release_state", "release_date",
+                                                         "external_rating", "category") and v}
+    title = " ".join(str(title or "").split())[:100]
     if not title:
-        return "ERROR: a game title is required."
+        return "ERROR: a game title (or a Steam/Epic store link) is required."
     lo, hi = _to_int(min_players, 1), _to_int(max_players, 4)
     lo, hi = min(lo, hi), max(lo, hi)
     tags = str(tags)[:200] if tags else None
     guild_id, user_id = ctx.guild.id, ctx.user.id
 
     async def action(interaction):
-        _, msg = await ctx.bot.game_service.add_game(title, user_id, guild_id, lo, hi, tags=tags)
+        _, msg = await ctx.bot.game_service.add_game(title, user_id, guild_id, lo, hi, tags=tags, **extra)
         return msg
 
     tag_text = f", tags: {tags}" if tags else ""
+    if extra.get("external_rating"):
+        tag_text += f", {extra['external_rating']}"
     return await post_confirmation(
         ctx, f"add_game:{title.lower()}",
         f"🎮 {ctx.user.display_name}, add **{title}** ({lo}-{hi} players{tag_text}) to the game library?",
@@ -294,15 +312,18 @@ def build_cave_tools() -> ToolRegistry:
         ),
         Tool(
             name="add_game",
-            description="Add a game to this server's game library (the user confirms with a button).",
+            description="Add a game to this server's game library by name or Steam/Epic store link "
+                        "(a link fills in the details automatically; the user confirms with a button).",
             handler=_add_game,
             parameters={"type": "object", "properties": {
                 "title": {"type": "string"},
+                "link": {"type": "string", "description": "Steam or Epic store link, if they gave one"},
                 "min_players": {"type": "integer"},
                 "max_players": {"type": "integer"},
                 "tags": {"type": "string", "description": "Comma-separated tags, e.g. 'survival, co-op'"},
-            }, "required": ["title"]},
+            }},
             requires_guild=True,
+            timeout=20,
         ),
         Tool(
             name="queue_song",
