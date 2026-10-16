@@ -101,11 +101,11 @@ class AIHandler:
     
     async def get_character_response(self, character: str, user_input: str) -> Optional[str]:
         """Get AI response for a specific character"""
-        if not self.is_available() or character not in self.config.CHARACTER_PROMPTS:
+        if not self.is_available() or character not in self.config.PERSONAS:
             return None
         
         try:
-            prompt = f"{self.config.CHARACTER_PROMPTS[character]}\n\nUser said: '{user_input}'\n\nRespond in character:"
+            prompt = f"{self.config.PERSONAS[character].prompt}\n\nUser said: '{user_input}'\n\nRespond in character:"
             response_text = await self._generate(prompt)
             return response_text.strip()
         except Exception as e:
@@ -360,30 +360,10 @@ UPDATED SUMMARY:"""
 
     async def get_roast_response(self, character: str, target_name: str, chat_history: List[Tuple[str, str]] = None) -> Optional[str]:
         """Generate a character-based roast"""
-        if not self.is_available() or character not in self.config.CHARACTER_PROMPTS:
+        if not self.is_available() or character not in self.config.PERSONAS:
             return None
         
         try:
-            roast_prompts = {
-                'hank': f"{self.config.CHARACTER_PROMPTS['hank']}\n\nRoast this Discord user named '{target_name}' in a friendly, playful way. Make fun of their lawn care, propane usage, or compare them to Bobby. Keep it PG-13, under 150 characters:",
-                
-                'dale': f"{self.config.CHARACTER_PROMPTS['dale']}\n\nRoast this Discord user named '{target_name}' in a paranoid, conspiracy-focused way. Suggest they're a government agent or part of some conspiracy. Keep it playful, under 150 characters:",
-                
-                'cartman': f"{self.config.CHARACTER_PROMPTS['cartman']}\n\nRoast this Discord user named '{target_name}' in Cartman's selfish, dramatic style. Call them lame or compare them to Kyle. Keep it PG-13, under 150 characters:",
-                
-                'redgreen': f"{self.config.CHARACTER_PROMPTS['redgreen']}\n\nRoast this Discord user named '{target_name}' using Red Green's practical, Canadian humor. Compare their usefulness to broken tools or government programs. Under 150 characters:",
-                
-                'trek': f"{self.config.CHARACTER_PROMPTS['trek']}\n\nRoast this Discord user named '{target_name}' using Star Trek technical language. Analyze their 'intelligence readings' or 'logic systems'. Keep it sci-fi and under 150 characters:",
-                
-                'alexjones': f"{self.config.CHARACTER_PROMPTS['alexjones']}\n\nRoast this Discord user named '{target_name}' by claiming they're part of some ridiculous conspiracy. Keep it over-the-top and under 200 characters:",
-                
-                'snake': f"{self.config.CHARACTER_PROMPTS['snake']}\n\nRoast this Discord user named '{target_name}' using military/tactical language. Suggest they'd be terrible at stealth missions. Under 150 characters:",
-                
-                'kratos': f"{self.config.CHARACTER_PROMPTS['kratos']}\n\nRoast this Discord user named '{target_name}' with godly disdain and disappointment. Compare them to weak mortals or failed warriors. Under 150 characters:",
-                
-                'dante': f"{self.config.CHARACTER_PROMPTS['dante']}\n\nRoast this Discord user named '{target_name}' by assigning them to an appropriate circle of hell for their sins. Keep it poetic and under 150 characters:"
-            }
-            
             # Build history string if available
             history_text = ""
             if chat_history:
@@ -394,7 +374,8 @@ UPDATED SUMMARY:"""
                     evidence = "\n".join(user_msgs[:10])
                     history_text = f"\n\nHere is a log of recent things {target_name} has said (use this to hurt them):\n{evidence}\n"
 
-            base_prompt = roast_prompts.get(character, f"Roast {target_name} in a funny way, under 150 characters:")
+            persona = self.config.PERSONAS[character]
+            base_prompt = f"{persona.prompt}\n\n{persona.roast.format(target=target_name)}"
             
             # Inject history if available
             if history_text:
@@ -411,30 +392,10 @@ UPDATED SUMMARY:"""
     
     async def get_compliment_response(self, character: str, target_name: str, chat_history: List[Tuple[str, str]] = None) -> Optional[str]:
         """Generate a character-based compliment"""
-        if not self.is_available() or character not in self.config.CHARACTER_PROMPTS:
+        if not self.is_available() or character not in self.config.PERSONAS:
             return None
         
         try:
-            compliment_prompts = {
-                'hank': f"{self.config.CHARACTER_PROMPTS['hank']}\n\nCompliment this Discord user named '{target_name}' in a wholesome, Hank Hill way. Mention propane, lawn care, or Texas values. Under 150 characters:",
-                
-                'dale': f"{self.config.CHARACTER_PROMPTS['dale']}\n\nGive a backhanded compliment to '{target_name}' suggesting they have good survival skills for the coming apocalypse. Under 150 characters:",
-                
-                'cartman': f"{self.config.CHARACTER_PROMPTS['cartman']}\n\nGive a self-serving compliment to '{target_name}' about how they're almost as cool as you. Under 150 characters:",
-                
-                'redgreen': f"{self.config.CHARACTER_PROMPTS['redgreen']}\n\nCompliment '{target_name}' by comparing them to useful tools or successful duct tape repairs. Under 150 characters:",
-                
-                'trek': f"{self.config.CHARACTER_PROMPTS['trek']}\n\nCompliment '{target_name}' using Star Trek technical language about their 'efficiency readings' or 'logic systems'. Under 150 characters:",
-                
-                'alexjones': f"{self.config.CHARACTER_PROMPTS['alexjones']}\n\nCompliment '{target_name}' by saying they're one of the few people who truly understand what's going on. Under 150 characters:",
-                
-                'snake': f"{self.config.CHARACTER_PROMPTS['snake']}\n\nCompliment '{target_name}' on their tactical awareness and potential as a soldier. Under 150 characters:",
-                
-                'kratos': f"{self.config.CHARACTER_PROMPTS['kratos']}\n\nGive grudging respect to '{target_name}' as a warrior worthy of acknowledgment. Under 150 characters:",
-                
-                'dante': f"{self.config.CHARACTER_PROMPTS['dante']}\n\nCompliment '{target_name}' by suggesting they have the potential for redemption and paradise. Under 150 characters:"
-            }
-            
             # Build history string if available
             history_text = ""
             if chat_history:
@@ -444,7 +405,8 @@ UPDATED SUMMARY:"""
                     evidence = "\n".join(user_msgs[:10])
                     history_text = f"\n\nHere is a log of recent things {target_name} has said:\n{evidence}\n"
 
-            base_prompt = compliment_prompts.get(character, f"Compliment {target_name} in a nice way, under 150 characters:")
+            persona = self.config.PERSONAS[character]
+            base_prompt = f"{persona.prompt}\n\n{persona.compliment.format(target=target_name)}"
             
              # Inject history if available
             if history_text:

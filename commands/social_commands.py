@@ -16,11 +16,8 @@ class SocialCommands(commands.Cog):
     
     def _get_random_character(self):
         """Get a random character for roasts/compliments"""
-        characters = list(self.config.CHARACTER_INFO.keys())
-        # Remove alexjones from general rotation (too intense for regular roasts)
-        if 'alexjones' in characters:
-            characters.remove('alexjones')
-        return random.choice(characters)
+        # Personas with in_rotation=false (e.g. Alex Jones, too intense for regular roasts) are skipped
+        return random.choice([key for key, p in self.config.PERSONAS.items() if p.in_rotation])
     
     async def _do_roast(self, interaction: discord.Interaction, member: discord.Member):
         """Core roast logic, shared by /roast and /roastme"""

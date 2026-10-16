@@ -56,6 +56,7 @@ def mock_config():
     config.BOT_TOKEN = "TEST_BOT_TOKEN_XXXX"
     config.GUILD_ID = 1234567890
     config.SYSTEM_INSTRUCTION = "You are Cave Johnson. Do science."
+    config.PERSONAS = BotConfig.PERSONAS  # real content/personas.json
     config.CHARACTER_PROMPTS = {
         "hank": "You are Hank.",
         "dale": "You are Dale.",
