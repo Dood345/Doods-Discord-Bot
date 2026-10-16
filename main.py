@@ -22,6 +22,7 @@ from utils.database import DatabaseHandler
 from utils.dialogue_manager import DialogueManager
 from utils.streaming import ReplyStreamer
 from utils.error_reporting import ErrorReporter, handle_app_command_error
+from utils.config_report import log_report as log_config_report
 from commands.character_commands import CharacterCommands
 from commands.social_commands import SocialCommands
 from commands.game_commands import GameCommands
@@ -90,6 +91,7 @@ class DoodsBot(commands.Bot):
     async def setup_hook(self):
         """Called when the bot is starting up"""
         self.errors = ErrorReporter(self, BotConfig.OWNER_ID)
+        log_config_report()
         self.tree.on_error = self.on_app_command_error
         # Setup Database Tables
         await self.db.setup_tables()

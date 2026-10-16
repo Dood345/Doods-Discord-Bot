@@ -78,7 +78,7 @@ Cogs live in `commands/` and are registered explicitly in `DoodsBot.setup_hook()
 
 ## Privacy rules (repo is public)
 
-Never commit real Discord guild/user/channel IDs, LAN IPs/hostnames, friends' names, or homelab URLs. Real values go in `.env` (documented in `.env.example`) or private files under `data/` (gitignored, and preserved on the server because deploy excludes `data/`). CI's privacy-guard step fails on 17–20 digit numbers and `192.168.x.x` in tracked files. Any new env var must be added to `.env.example` and the user told to add it to the server's `.env` before merging to `main`.
+Never commit real Discord guild/user/channel IDs, LAN IPs/hostnames, friends' names, or homelab URLs. Real values go in `.env` (documented in `.env.example`) or private files under `data/` (gitignored, and preserved on the server because deploy excludes `data/`). CI's privacy-guard step fails on 17–20 digit numbers and `192.168.x.x` in tracked files. Any new feature toggle also belongs in `utils/config_report.py` (startup on/off log). Any new env var must be added to `.env.example` and the user told to add it to the server's `.env` before merging to `main`.
 
 ## Deployment / CI
 
