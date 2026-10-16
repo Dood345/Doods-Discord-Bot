@@ -31,6 +31,7 @@ from services.gift_service import GiftService
 from services.game_service import GameService
 from services.homelab_service import HomelabService
 from services.image_service import ImageService
+from services.music_library import MusicLibrary
 
 # Setup logging
 setup_logging()
@@ -64,6 +65,7 @@ class DoodsBot(commands.Bot):
         self.gift_service = GiftService(self.db)
         self.game_service = GameService(self.db, self.dialogue)
         self.homelab_service = HomelabService()
+        self.music_library = MusicLibrary()
         
         self.ai_handler = AIHandler(self.db, self)
         self.image_service = ImageService(self.ai_handler)

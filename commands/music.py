@@ -6,9 +6,11 @@ import asyncio
 import logging
 import os
 import edge_tts
+import re
 import time
 from urllib.parse import urlparse
 from config import BotConfig
+from services.music_library import PLEX_PREFIX, MATCH_THRESHOLD, match_score
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,8 @@ YDL_OPTIONS = {
 }
 
 YOUTUBE_HOSTS = {'youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be'}
+
+VARIANT_WORDS = {'remix', 'cover', 'live', 'nightcore', 'sped', 'slowed', 'reverb', 'instrumental', 'karaoke', 'mashup', 'edit', 'bootleg'}
 
 YOUTUBE_BLOCKED_MSG = ("YouTube is blocking the server with a 'confirm you're not a bot' check. "
                        "The owner needs to refresh the YouTube cookies file on the server.")
@@ -218,13 +222,18 @@ class MusicCommands(commands.Cog):
             
         try:
             # 1. Get Stream URL (JIT)
-            loop = self.bot.loop or asyncio.get_event_loop()
-            data = await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(YDL_OPTIONS).extract_info(url, download=False))
-            
-            if data and 'entries' in data:
-                data = data['entries'][0]
-            
-            stream_url = data['url']
+            extra_before = ""
+            if url.startswith(PLEX_PREFIX):
+                # Library track: stream straight from Plex (token sent as a header)
+                stream_url, extra_before = self.bot.music_library.stream_source(url)
+            else:
+                loop = self.bot.loop or asyncio.get_event_loop()
+                data = await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(YDL_OPTIONS).extract_info(url, download=False))
+
+                if data and 'entries' in data:
+                    data = data['entries'][0]
+
+                stream_url = data['url']
             
             # 2. Update Facility Status
             vc_channel = voice_client.channel
@@ -247,6 +256,8 @@ class MusicCommands(commands.Cog):
                 
                 # Dynamic FFMPEG Options for Seeking
                 current_opts = FFMPEG_OPTIONS.copy()
+                if extra_before:
+                    current_opts['before_options'] = f"{current_opts['before_options']} {extra_before}"
                 if seek_time:
                     # Inject -ss before_options
                     # We append it to existing options
@@ -321,7 +332,11 @@ class MusicCommands(commands.Cog):
     # --- Chat (AI tool) entry points: one track at a time, no interaction object ---
 
     async def resolve_track(self, query: str) -> tuple[str, str, str] | str:
-        """Find a single track for a search term or YouTube link. Returns (url, title, uploader) or an error string."""
+        """Find a single track. Returns (url, title, uploader) or an error string.
+
+        YouTube links play from YouTube. Anything else is a song request, tried in order:
+        the owner's Plex library, then SoundCloud, then a YouTube search (most likely to be bot-blocked).
+        """
         query = query.strip()
         if query.startswith(('http://', 'https://')):
             # The bot runs inside the LAN and yt-dlp fetches any URL, so only allow YouTube links from chat
@@ -330,6 +345,14 @@ class MusicCommands(commands.Cog):
                 return "Only YouTube links or search terms are allowed."
             target = query
         else:
+            library = getattr(self.bot, "music_library", None)
+            if library is not None and library.available:
+                track = await library.find(query)
+                if track:
+                    return track
+            track = await self._search_soundcloud(query)
+            if track:
+                return track
             target = f"ytsearch:{query}"
 
         try:
@@ -349,6 +372,35 @@ class MusicCommands(commands.Cog):
                 return "No playable tracks found."
             info = entries[0]
         return (info['url'], info['title'], info.get('uploader', 'Unknown Artist'))
+
+    async def _search_soundcloud(self, query: str) -> tuple[str, str, str] | None:
+        """First SoundCloud result whose title/uploader actually matches the request (skips random remixes)."""
+        try:
+            info = await self._fetch_youtube_data(f"scsearch5:{query}")
+        except Exception as e:
+            logger.info(f"SoundCloud search failed for {query!r}: {e}")
+            return None
+        wanted_variants = VARIANT_WORDS & set(query.lower().split())
+        candidates = []
+        for rank, entry in enumerate((info or {}).get('entries') or []):
+            if not entry or not entry.get('url'):
+                continue
+            uploader = entry.get('uploader') or 'Unknown Artist'
+            title = entry.get('title', 'Unknown')
+            if match_score(query, f"{title} {uploader}") < MATCH_THRESHOLD:
+                continue
+            # Prefer the original over remixes/covers/live cuts unless the request asks for one
+            is_variant = bool((VARIANT_WORDS - wanted_variants) & set(re.findall(r"[a-z]+", title.lower())))
+            candidates.append((is_variant, rank, (entry['url'], title, uploader)))
+        return min(candidates)[2] if candidates else None
+
+    @staticmethod
+    def track_source(url: str) -> str:
+        if url.startswith(PLEX_PREFIX):
+            return "📀 your library"
+        if "soundcloud.com" in url:
+            return "☁️ SoundCloud"
+        return "▶️ YouTube"
 
     async def enqueue_track(self, member: discord.Member, text_channel, track: tuple[str, str, str]) -> str:
         """Queue a resolved track in the member's voice channel; joins voice if needed."""

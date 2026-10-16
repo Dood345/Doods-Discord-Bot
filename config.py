@@ -249,6 +249,9 @@ class BotConfig:
     MUSIC_BITRATE = int(os.getenv('MUSIC_BITRATE', '128'))  # kbps Opus sent to Discord
     # bgutil PO-token provider (Docker container) that helps yt-dlp pass YouTube's bot checks
     YT_POT_PROVIDER_URL = os.getenv('YT_POT_PROVIDER_URL', 'http://127.0.0.1:4416')
+    # Plex music library, searched before SoundCloud/YouTube for song requests
+    PLEX_URL = os.getenv('PLEX_URL') or (f"http://{os.getenv('PLEX_IP')}:32400" if os.getenv('PLEX_IP') else None)
+    PLEX_TOKEN = os.getenv('PLEX_TOKEN')
 
     # Doodlab Configuration
     # Printer Host (IP:Port for Moonraker/Fluidd)

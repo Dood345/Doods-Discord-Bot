@@ -151,7 +151,7 @@ async def _queue_song(ctx: ToolContext, query: str) -> str:
 
     return await post_confirmation(
         ctx, f"queue_song:{url}",
-        f"🎵 {ctx.user.display_name}, queue **{title}** by {uploader}?",
+        f"🎵 {ctx.user.display_name}, queue **{title}** by {uploader}? ({music.track_source(url)})",
         action, check=check, confirm_label="Queue it")
 
 

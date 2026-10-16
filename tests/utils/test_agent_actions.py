@@ -143,7 +143,7 @@ async def test_queue_song_requires_voice():
 
 
 async def test_resolve_track_blocks_non_youtube_and_playlists():
-    music = MusicCommands(MagicMock())
+    music = MusicCommands(MagicMock(music_library=None))
     music._fetch_youtube_data = AsyncMock()
     assert "Only YouTube" in await music.resolve_track("http://127.0.0.1:8080/admin")
     music._fetch_youtube_data.assert_not_awaited()
@@ -202,7 +202,7 @@ async def test_youtube_link_adds_queue_hint_and_low_temperature(temp_db, mocker)
 
 async def test_resolve_track_reports_youtube_bot_wall():
     import yt_dlp
-    music = MusicCommands(MagicMock())
+    music = MusicCommands(MagicMock(music_library=None))
     music._fetch_youtube_data = AsyncMock(side_effect=yt_dlp.utils.DownloadError(
         "ERROR: [youtube] abc: Sign in to confirm you're not a bot. Use --cookies"))
     assert "cookies" in await music.resolve_track("https://youtu.be/abc")
