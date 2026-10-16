@@ -34,6 +34,8 @@ Shared singletons are attached to the bot in `DoodsBot.__init__` and accessed by
 - `bot.ai_handler` — `AIHandler` (`utils/ai_handler.py`).
 - `bot.reaction_handler` — keyword emoji reactions from `config.KEYWORD_REACTIONS`.
 
+Unhandled errors from slash commands/context menus (`tree.on_error`), prefix commands and events (`Bot.on_error`) go through `utils/error_reporting.py`: full traceback in the log, the user gets an ephemeral "something broke", and the owner gets a DM (one per distinct error per 15 min, with tokens, keys, URLs and IPs scrubbed).
+
 Cogs live in `commands/` and are registered explicitly in `DoodsBot.setup_hook()` — a new cog must be imported and `add_cog`'d there. Most commands are slash commands (`app_commands`); prefix is `!`.
 
 **AI backend:** a local **Ollama** server (`OLLAMA_URL`, model from `OLLAMA_MODEL`, always `think: false`). The default persona is "Cave Johnson" (Portal).

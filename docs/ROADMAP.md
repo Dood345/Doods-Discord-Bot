@@ -90,7 +90,7 @@ Deliverable also includes the `add-ai-tool` skill (written once the registry's r
 - Typed settings (e.g. `pydantic-settings`) replacing the class-attribute `BotConfig`; validates `.env` on startup and logs what's disabled.
 - [x] DB: `schema_version` + migration runner (`utils/migrations.py`) with automatic pre-migration backups, tested against production's real schema.
 - `ruff` (lint + format) in CI and a pre-commit hook.
-- Error reporting: unhandled app-command errors DM the owner with a traceback summary; global `tree.on_error` handler (today only prefix-command errors are handled).
+- [x] Error reporting: `tree.on_error` + `on_error` DM the owner a scrubbed, rate-limited traceback (`utils/error_reporting.py`).
 - Tests for cogs using lightweight interaction fakes.
 
 ## Phase 4 — Ops

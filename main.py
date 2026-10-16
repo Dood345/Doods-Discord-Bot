@@ -1,7 +1,9 @@
 import discord
+from discord import app_commands
 from discord.ext import commands
 import asyncio
 import os
+import sys
 import logging
 from datetime import datetime
 from dotenv import load_dotenv
@@ -19,6 +21,7 @@ from utils.reaction_handler import ReactionHandler
 from utils.database import DatabaseHandler
 from utils.dialogue_manager import DialogueManager
 from utils.streaming import ReplyStreamer
+from utils.error_reporting import ErrorReporter, handle_app_command_error
 from commands.character_commands import CharacterCommands
 from commands.social_commands import SocialCommands
 from commands.game_commands import GameCommands
@@ -86,6 +89,8 @@ class DoodsBot(commands.Bot):
         
     async def setup_hook(self):
         """Called when the bot is starting up"""
+        self.errors = ErrorReporter(self, BotConfig.OWNER_ID)
+        self.tree.on_error = self.on_app_command_error
         # Setup Database Tables
         await self.db.setup_tables()
         
@@ -176,14 +181,24 @@ class DoodsBot(commands.Bot):
         await self.process_commands(message)
     
     async def on_command_error(self, ctx, error):
-        """Global error handler"""
+        """Global error handler for prefix commands"""
         if isinstance(error, commands.CommandNotFound):
             return  # Ignore unknown commands
         elif isinstance(error, commands.MissingRequiredArgument):
             await ctx.send("❌ Missing required argument! Try `!help` to see how to use commands.")
         else:
-            logger.error(f"Command error: {error}")
+            await self.errors.report(f"!{ctx.command}", getattr(error, "original", error), str(ctx.author))
             await ctx.send("🤖 Something went wrong! The error has been logged.")
+
+    async def on_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        """Slash commands and context menus: tell the user, report the real cause to the owner."""
+        await handle_app_command_error(self.errors, interaction, error)
+
+    async def on_error(self, event_method: str, *args, **kwargs):
+        """Exceptions escaping event handlers (on_message, tasks started from events, ...)."""
+        _, error, _ = sys.exc_info()
+        if error is not None:
+            await self.errors.report(f"event {event_method}", error)
 
 if __name__ == "__main__":
     """Main function to run the bot"""
