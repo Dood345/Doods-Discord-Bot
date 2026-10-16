@@ -5,7 +5,6 @@ import websocket # requires: pip install websocket-client
 import uuid
 import random
 import logging
-import time
 from config import BotConfig
 
 logger = logging.getLogger(__name__)

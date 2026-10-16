@@ -89,7 +89,7 @@ Deliverable also includes the `add-ai-tool` skill (written once the registry's r
 - Auto-load cogs from `commands/` as extensions + owner `!reload <cog>` for hot reload without restarting the service.
 - [x] Startup config report instead of a typed-settings rewrite (`utils/config_report.py`): logs which features are on/off and why, and warns on known traps. Swapping `BotConfig` for pydantic-settings across ~20 files wasn't worth the risk.
 - [x] DB: `schema_version` + migration runner (`utils/migrations.py`) with automatic pre-migration backups, tested against production's real schema.
-- `ruff` (lint + format) in CI and a pre-commit hook.
+- [x] `ruff check` in CI (F + E9: undefined names, unused imports, syntax). No formatter: mixed CRLF/LF would make it rewrite every file.
 - [x] Error reporting: `tree.on_error` + `on_error` DM the owner a scrubbed, rate-limited traceback (`utils/error_reporting.py`).
 - Tests for cogs using lightweight interaction fakes.
 

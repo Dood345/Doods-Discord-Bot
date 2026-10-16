@@ -1,6 +1,4 @@
 import pytest
-import aiosqlite
-import os
 import asyncio
 from unittest.mock import MagicMock
 

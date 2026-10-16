@@ -10,6 +10,7 @@ Dependencies are managed with `uv` (`pyproject.toml` + `uv.lock`; requires Pytho
 python -m uv sync                                   # install deps (incl. dev group)
 python -m uv run python main.py                     # run the bot (needs .env)
 python -m uv run pytest                             # full test suite (testpaths = tests)
+python -m uv run ruff check .                       # lint: F + E9 only (CI runs it too)
 python -m uv run pytest tests/utils/test_database.py::test_name -v   # single test
 python -m uv run pytest --cov=utils --cov=services  # coverage
 python -m uv run python utils/seed_games.py         # seed games table in data/doodlab.db

@@ -3,7 +3,6 @@ import asyncio
 import aiosqlite
 import logging
 import os
-from datetime import datetime
 from typing import List, Tuple, Optional, Dict
 
 from utils import migrations

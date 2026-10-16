@@ -4,8 +4,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import logging
-import asyncio
-from typing import List, Optional
+from typing import List
 
 logger = logging.getLogger(__name__)
 

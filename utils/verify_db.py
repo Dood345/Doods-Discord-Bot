@@ -28,7 +28,7 @@ async def verify():
 if __name__ == "__main__":
     try:
         asyncio.run(verify())
-    except Exception as e:
+    except Exception:
         import traceback
         with open("verify_error.txt", "w") as f:
             traceback.print_exc(file=f)

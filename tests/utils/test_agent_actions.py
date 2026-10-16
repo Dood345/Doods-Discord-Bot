@@ -2,7 +2,6 @@ import pytest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
-import discord
 
 from commands.music import MusicCommands
 from config import BotConfig

@@ -24,6 +24,9 @@ jobs:
     - name: Verify Code Compilation
       run: uv run python -m compileall -q . -x '\.venv'
 
+    - name: Lint (undefined names, unused imports, syntax)
+      run: uv run ruff check .
+
     - name: Run tests
       run: uv run pytest -q
 

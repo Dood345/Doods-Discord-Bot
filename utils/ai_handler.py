@@ -1,6 +1,5 @@
 """AI handling utilities for the Discord bot"""
 
-import os
 import aiohttp
 import logging
 from typing import Optional, Dict, List, Tuple

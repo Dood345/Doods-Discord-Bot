@@ -1,11 +1,9 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-import asyncio
 import os
 import sys
 import logging
-from datetime import datetime
 from dotenv import load_dotenv
 
 from utils.logger import setup_logging

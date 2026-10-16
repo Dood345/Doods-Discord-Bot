@@ -7,7 +7,6 @@ import random
 import logging
 import qrcode
 import io
-import asyncio
 from ping3 import ping
 
 logger = logging.getLogger(__name__)

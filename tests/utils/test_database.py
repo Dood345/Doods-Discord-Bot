@@ -40,7 +40,7 @@ async def test_add_and_retrieve_game(temp_db):
 @pytest.mark.asyncio
 async def test_game_tags(temp_db):
     """Test the normalized tagging system."""
-    game_id = await temp_db.add_game(
+    await temp_db.add_game(
         title="Half-Life 2",
         added_by=123,
         guild_id=12345,

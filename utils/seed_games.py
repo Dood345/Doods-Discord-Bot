@@ -1,9 +1,7 @@
-import sqlite3
 import sys
 import io
 import asyncio
 import os
-import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # repo root
 from utils.database import DatabaseHandler  # noqa: E402
@@ -230,20 +228,6 @@ async def seed_database():
     print(f"🎉 SUCCESS! {added_count} simulations archived.")
     print(f"🏷️  {tag_count} metadata tags applied.")
     print("Cave Johnson here—we're done. Get back to work.")
-
-def get_unique_tags(manifest):
-    unique_tags = set()
-    
-    for game in manifest:
-        # Pull tags from each game entry
-        game_tags = game.get("tags", [])
-        
-        # Add to set (sets automatically ignore duplicates)
-        for tag in game_tags:
-            unique_tags.add(tag.strip())
-            
-    # Return a sorted list for better readability
-    return sorted(list(unique_tags))
 
 if __name__ == "__main__":
     # Execute and print
