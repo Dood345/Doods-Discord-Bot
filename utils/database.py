@@ -83,6 +83,21 @@ class DatabaseHandler:
                              paused INTEGER,
                              saved_at REAL)''')
 
+                # Game nights from /gamenight, and who showed up (attendance points; services/game_night_service.py)
+                await conn.execute('''CREATE TABLE IF NOT EXISTS game_nights
+                            (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                             guild_id INTEGER,
+                             voice_channel_id INTEGER,
+                             text_channel_id INTEGER,
+                             starts_at REAL,
+                             ends_at REAL,
+                             closed INTEGER DEFAULT 0)''')
+                await conn.execute('''CREATE TABLE IF NOT EXISTS game_night_attendance
+                            (night_id INTEGER,
+                             user_id INTEGER,
+                             checks INTEGER DEFAULT 0,
+                             PRIMARY KEY (night_id, user_id))''')
+
                 # Per-server opt-in settings (e.g. the Daily Test Chamber channel)
                 await conn.execute('''CREATE TABLE IF NOT EXISTS guild_settings
                             (guild_id INTEGER,

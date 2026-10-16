@@ -5,10 +5,11 @@ from datetime import timedelta
 
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 
-from services.game_night_service import GameNightService, parse_start
+from services.game_night_service import ATTEND_POINTS, GameNightService, parse_start
 from utils.layouts import game_night_card
+from utils.members import member_name
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,12 @@ class GameNight(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.service = GameNightService(bot.db)
+
+    async def cog_load(self):
+        self.attendance.start()
+
+    async def cog_unload(self):
+        self.attendance.cancel()
 
     @app_commands.command(name="gamenight", description="Cave picks 3 games for who's around, runs a poll and schedules it")
     @app_commands.describe(start="Start time, e.g. 9pm or 20:30 (default 9pm)",
@@ -48,6 +55,10 @@ class GameNight(commands.Cog):
             "in the poll below and hit Interested on the event.")
         intro = intro or "🎮 GAME NIGHT! Vote below, test subjects. Attendance is mandatory. Fun is also mandatory."
         event_note = await self._schedule(interaction, start_time, channel, titles)
+        if channel is not None:
+            await self.service.record_night(interaction.guild_id, channel.id, interaction.channel_id, start_time)
+            if await self.bot.points_service.is_enabled(interaction.guild_id):
+                event_note += f"\n-# Stay in {channel.mention} for 20+ minutes to earn {ATTEND_POINTS} Science Points."
         card = game_night_card(int(start_time.timestamp()), players, intro, picks, event_note)
         await interaction.followup.send(view=card, allowed_mentions=discord.AllowedMentions.none())
 
@@ -71,6 +82,49 @@ class GameNight(commands.Cog):
         except discord.HTTPException as e:
             logger.warning(f"Game night event failed: {e}")
             return "-# Discord wouldn't let me create the event this time."
+
+
+    # --- Attendance points ---
+
+    @tasks.loop(minutes=2)
+    async def attendance(self):
+        try:
+            await self.check_attendance()
+        except Exception as e:
+            logger.exception(f"Game night attendance check failed: {e}")
+
+    @attendance.before_loop
+    async def before_attendance(self):
+        await self.bot.wait_until_ready()
+
+    async def check_attendance(self, now: float = None) -> None:
+        now = now if now is not None else self.service.now().timestamp()
+        points = self.bot.points_service
+        for night in await self.service.open_nights(now):
+            guild = self.bot.get_guild(night.guild_id)
+            if now > night.ends_at or guild is None:
+                await self._close(night, guild)
+                continue
+            if not await points.is_enabled(night.guild_id):
+                continue
+            channel = guild.get_channel(night.voice_channel_id)
+            humans = [m.id for m in getattr(channel, "members", []) if not m.bot]
+            for user_id in await self.service.record_presence(night.id, humans):
+                await points.award(night.guild_id, user_id, ATTEND_POINTS, "gamenight", f"gamenight:{night.id}:{user_id}")
+
+    async def _close(self, night, guild) -> None:
+        attended = await self.service.close_night(night.id)
+        if not attended or guild is None or not await self.bot.points_service.is_enabled(night.guild_id):
+            return
+        text = guild.get_channel(night.text_channel_id) if night.text_channel_id else None
+        if text is None:
+            return
+        names = [await member_name(guild, uid) for uid in attended]
+        try:
+            await text.send(f"🎮 **Game night attendance logged.** +{ATTEND_POINTS} Science Points to: {', '.join(names)}.",
+                            allowed_mentions=discord.AllowedMentions.none())
+        except discord.HTTPException as e:
+            logger.warning(f"Game night summary failed: {e}")
 
 
 async def setup(bot):
