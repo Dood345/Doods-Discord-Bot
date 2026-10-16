@@ -72,3 +72,50 @@ async def test_rate_game_resolves_loose_titles(temp_db):
 
     ratings = {g["title"]: g["avg_rating"] for g in await temp_db.get_game_library(GUILD_ID)}
     assert ratings["Valheim"] == 9 and ratings["Portal"] == 10 and ratings["Portal 2"] is None
+
+
+# --- /play routing --------------------------------------------------------------
+
+def play_interaction():
+    from unittest.mock import AsyncMock
+    msg = SimpleNamespace(edit=AsyncMock())
+    return SimpleNamespace(
+        guild=SimpleNamespace(id=GUILD_ID), channel=None,
+        response=SimpleNamespace(defer=AsyncMock()),
+        followup=SimpleNamespace(send=AsyncMock(return_value=msg))), msg
+
+
+async def test_play_search_goes_library_first():
+    from unittest.mock import AsyncMock
+    music = MusicCommands(MagicMock(music_library=None))
+    vc = voice_client(playing=True)
+    music._ensure_voice_connection = AsyncMock(return_value=vc)
+    tracks = [("plex:/library/parts/1/2/a.flac", "Kryptonite", "3 Doors Down"), ("plex:/x", "Loser", "3 Doors Down")]
+    music.resolve_request = AsyncMock(return_value=(tracks, "a 2-track **3 Doors Down** mix"))
+    music._fetch_youtube_data = AsyncMock()
+
+    interaction, msg = play_interaction()
+    await MusicCommands.play.callback(music, interaction, query="3 doors down", radio=True)
+
+    music.resolve_request.assert_awaited_once_with("3 doors down", radio=True)
+    music._fetch_youtube_data.assert_not_awaited()
+    assert music.players[5].queue == tracks
+    assert "facility archives" in msg.edit.call_args.kwargs["content"]
+
+
+async def test_play_reports_resolve_errors_and_keeps_links_on_youtube():
+    from unittest.mock import AsyncMock
+    music = MusicCommands(MagicMock(music_library=None))
+    music._ensure_voice_connection = AsyncMock(return_value=voice_client(playing=True))
+    music.resolve_request = AsyncMock(return_value="No playable tracks found.")
+    interaction, msg = play_interaction()
+    await MusicCommands.play.callback(music, interaction, query="zzzz")
+    assert "No playable tracks" in msg.edit.call_args.kwargs["content"]
+    assert music.players[5].queue == []
+
+    music.resolve_request.reset_mock()
+    music._fetch_youtube_data = AsyncMock(return_value={"url": "u", "title": "Still Alive", "uploader": "JC"})
+    interaction, _ = play_interaction()
+    await MusicCommands.play.callback(music, interaction, url="https://youtu.be/x")
+    music.resolve_request.assert_not_awaited()
+    assert music.players[5].queue == [("u", "Still Alive", "JC")]

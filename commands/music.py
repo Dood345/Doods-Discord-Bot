@@ -463,15 +463,16 @@ class MusicCommands(commands.Cog):
         state = "ONLINE" if self.tts_settings[guild_id] else "OFFLINE"
         await interaction.response.send_message(f"🎙️ **Facility Announcer {state}.**")
 
-    @app_commands.command(name="play", description="Play audio from YouTube (Search or Link)")
+    @app_commands.command(name="play", description="Play a song, artist or link (facility archives first, then SoundCloud/YouTube)")
     @app_commands.describe(
-        query="Search term (e.g. 'lofi hip hop')", 
-        url="Direct YouTube Link", 
+        query="Song or artist (e.g. 'kryptonite' or '3 doors down')",
+        url="Direct YouTube Link",
         force_play="Play immediately (interrupt current)",
-        playlist_only="Search specifically for playlists (Default: False)"
+        playlist_only="Search YouTube specifically for playlists (Default: False)",
+        radio="Start a radio station of similar music from this song or artist"
     )
     @app_commands.rename(force_play="force-play", playlist_only="playlist-only")
-    async def play(self, interaction: discord.Interaction, query: str | None = None, url: str | None = None, force_play: bool = False, playlist_only: bool = False) -> None:
+    async def play(self, interaction: discord.Interaction, query: str | None = None, url: str | None = None, force_play: bool = False, playlist_only: bool = False, radio: bool = False) -> None:
         """Robust YouTube Player"""
         await interaction.response.defer()
         
@@ -496,7 +497,23 @@ class MusicCommands(commands.Cog):
 
         target = url if url else query
         is_direct_link = True if url else False
-        
+
+        # Plain song/artist requests go library-first (Plex -> SoundCloud -> YouTube), like Cave's queue_song
+        if not is_direct_link and not playlist_only and query and not query.startswith(('http://', 'https://')):
+            msg = await interaction.followup.send(f"🔍 **Searching:** `{query}`...")
+            try:
+                planned = await self.resolve_request(query, radio=radio)
+            except Exception as e:
+                logger.error(f"Unexpected Error in play: {e}")
+                planned = "The audio processor caught fire. Something unexpected happened."
+            if isinstance(planned, str):
+                await msg.edit(content=f"⚠️ **Error:** {planned}")
+                return
+            tracks, description = planned
+            await msg.edit(content=f"🎵 **Found:** {description} ({self.track_source(tracks[0][0])})")
+            await self._add_to_queue(interaction.guild, vc, player, tracks, force_play, msg)
+            return
+
         if not is_direct_link and target and not target.startswith(('http://', 'https://')):
              if playlist_only:
                  import urllib.parse
@@ -562,25 +579,7 @@ class MusicCommands(commands.Cog):
                  await msg.edit(content="❌ **Error:** No playable tracks found.")
                  return
 
-            queue = player.queue
-
-            if force_play:
-                player.queue = added_songs + queue
-                
-                current_track_info = player.current_track
-
-                if vc.is_playing() and current_track_info:
-                    player.queue.insert(len(added_songs), current_track_info)
-                    vc.stop()
-                    await msg.edit(content=f"🚨 **Interrupted!** Playing {added_songs[0][1]} immediately.")
-                else:
-                    if not vc.is_playing():
-                        await self.play_next(interaction.guild)
-            else:
-                queue.extend(added_songs)
-
-                if not vc.is_playing():
-                    await self.play_next(interaction.guild)
+            await self._add_to_queue(interaction.guild, vc, player, added_songs, force_play, msg)
 
         except yt_dlp.utils.DownloadError as e:
             logger.error(f"YTDL Error: {e}")
@@ -588,6 +587,21 @@ class MusicCommands(commands.Cog):
         except Exception as e:
             logger.error(f"Unexpected Error in play: {e}")
             await msg.edit(content="⚠️ **Error:** The audio processor caught fire. Something unexpected happened.")
+
+    async def _add_to_queue(self, guild, vc, player: GuildPlayer, added_songs, force_play: bool, msg) -> None:
+        if force_play:
+            player.queue = added_songs + player.queue
+            current_track_info = player.current_track
+            if vc.is_playing() and current_track_info:
+                player.queue.insert(len(added_songs), current_track_info)
+                vc.stop()
+                await msg.edit(content=f"🚨 **Interrupted!** Playing {added_songs[0][1]} immediately.")
+            elif not vc.is_playing():
+                await self.play_next(guild)
+        else:
+            player.queue.extend(added_songs)
+            if not vc.is_playing():
+                await self.play_next(guild)
 
     @app_commands.command(name="previous", description="Go back to the previous song")
     async def previous(self, interaction: discord.Interaction) -> None:

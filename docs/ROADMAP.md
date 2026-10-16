@@ -18,7 +18,7 @@ Each phase is one or more PRs, branch → `dev` → `main`. Each phase ends with
 | #100 | Game list should work with the per-channel/guild system | 2 (games) ✅ |
 | #103 | Adding a game by link auto-fills info (Steam/Epic) | 2 (games) + agent `add_game` tool |
 | #48 | Gift claim shows item IDs publicly | 2 — privacy fix, use ephemeral replies / select menus ✅ |
-| #69 | Send a link to add to the print queue instead of a file | 2 (homelab) |
+| #69 | Send a link to add to the print queue instead of a file | won't do: print settings vary too much per model |
 
 ---
 
@@ -71,7 +71,7 @@ Deliverable also includes the `add-ai-tool` skill (written once the registry's r
 
 ## Phase 2 — More fun
 
-- **Library-first music.** ✅ Cave's song requests try Plex → SoundCloud → YouTube search; YouTube links still go to YouTube. Artist requests queue a mix; "radio" requests mix in similar artists from the library (#90).
+- **Library-first music.** ✅ Cave's song requests try Plex → SoundCloud → YouTube search; YouTube links still go to YouTube. Artist requests queue a mix; "radio" requests mix in similar artists from the library (#90). `/play` uses the same routing (plus a `radio` option); links and `playlist-only` still go to YouTube.
 
 - **One character command, data-driven personas.** Replace nine near-identical `/hank`, `/dale`, … commands with `/ask character:<autocomplete> prompt:` backed by a persona file (prompt, emoji, fallback lines, reactions). Adding a character = editing data. Keep old commands as aliases for a release.
 - **Character showdowns.** `/debate hank cartman topic:` — two personas argue for 3 rounds, server votes with a native Discord poll.
@@ -98,7 +98,6 @@ Deliverable also includes the `add-ai-tool` skill (written once the registry's r
 - Nightly SQLite backup (`sqlite3 .backup`) with rotation on the server.
 - Deploy: health check after `systemctl restart`; auto-rollback to previous release dir if the bot isn't online in 60 s.
 - Parametrize the deploy path (`/home/<user>/discordBot`) via a repo variable.
-- Renovate: keep dependencies (`uv.lock`, GitHub Actions, the bgutil provider image) up to date with grouped PRs into `dev`; CI must pass before merge. Pin `discord.py` first (Phase 3) so updates are reviewable.
 
 ---
 
