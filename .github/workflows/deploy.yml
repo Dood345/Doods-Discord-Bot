@@ -4,6 +4,22 @@ on:
   push:
     branches: [ "main" ]
   workflow_dispatch:
+    inputs:
+      simulate_failure:
+        description: "Pretend the health check failed, to exercise the rollback"
+        type: boolean
+        default: false
+
+# Never run two deploys at once (each one restarts the bot)
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  # Set the DEPLOY_PATH repository variable to deploy somewhere else
+  DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/home/dood345/discordBot' }}
+  SERVICE: discordBot.service
+  READY_TIMEOUT: "120"
 
 jobs:
   deploy:
@@ -13,28 +29,76 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
+    - name: Snapshot the running release
+      # Code + venv as they are now, so a failed deploy can go straight back to them
+      run: |
+        mkdir -p "$DEPLOY_PATH.prev"
+        rsync -a --delete \
+          --exclude='.env' --exclude='data' --exclude='.git' --exclude='www.youtube.com_cookies.txt' \
+          "$DEPLOY_PATH/" "$DEPLOY_PATH.prev/"
+        touch "$RUNNER_TEMP/snapshot_ok"
+
     - name: Deploy Code (Preserve data)
       run: |
-        rsync -av --delete \
+        rsync -a --delete \
           --exclude='.env' \
           --exclude='data' \
           --exclude='venv' \
           --exclude='.git' \
           --exclude='www.youtube.com_cookies.txt' \
-          ./ /home/dood345/discordBot/
+          ./ "$DEPLOY_PATH/"
 
     - name: Update Dependencies
       run: |
-        # CHANGED .cargo to .local here
         if [ ! -f "$HOME/.local/bin/uv" ]; then
           curl -LsSf https://astral.sh/uv/install.sh | sh
         fi
-        cd /home/dood345/discordBot/
-        export UV_PROJECT_ENVIRONMENT=/home/dood345/discordBot/venv
-        
-        # CHANGED .cargo to .local here
+        cd "$DEPLOY_PATH"
+        export UV_PROJECT_ENVIRONMENT="$DEPLOY_PATH/venv"
         $HOME/.local/bin/uv sync --no-dev
 
-    - name: Restart Service
-      # Reload the bot so it reads the new code and the existing .env
-      run: sudo systemctl restart discordBot.service
+    - name: Restart and wait until the bot is online
+      run: |
+        started=$(date +%s)
+        sudo systemctl restart "$SERVICE"
+        if [ "${{ inputs.simulate_failure }}" = "true" ]; then
+          echo "::warning::simulate_failure is set: treating this deploy as unhealthy"
+          exit 1
+        fi
+        # The bot writes data/ready.json in on_ready; wait for one newer than the restart
+        for i in $(seq 1 "$READY_TIMEOUT"); do
+          ready=$(stat -c %Y "$DEPLOY_PATH/data/ready.json" 2>/dev/null || echo 0)
+          if [ "$ready" -ge "$started" ] && systemctl is-active --quiet "$SERVICE"; then
+            echo "Bot online after $(( $(date +%s) - started ))s"
+            exit 0
+          fi
+          sleep 1
+        done
+        echo "::error::Bot didn't come online within ${READY_TIMEOUT}s"
+        tail -n 40 "$DEPLOY_PATH/data/logs/bot.log" || true
+        exit 1
+
+    - name: Roll back to the previous release
+      if: failure()
+      run: |
+        if [ ! -f "$RUNNER_TEMP/snapshot_ok" ]; then
+          echo "::error::Failed before the release snapshot existed; nothing to roll back to"
+          exit 1
+        fi
+        # rsync swaps files in by rename, so this is safe while the (broken) bot keeps restarting;
+        # only "restart" is allowed through passwordless sudo
+        rsync -a --delete \
+          --exclude='.env' --exclude='data' --exclude='.git' --exclude='www.youtube.com_cookies.txt' \
+          "$DEPLOY_PATH.prev/" "$DEPLOY_PATH/"
+        started=$(date +%s)
+        sudo systemctl restart "$SERVICE"
+        for i in $(seq 1 "$READY_TIMEOUT"); do
+          ready=$(stat -c %Y "$DEPLOY_PATH/data/ready.json" 2>/dev/null || echo 0)
+          if [ "$ready" -ge "$started" ]; then
+            echo "::warning::Rolled back to the previous release; it's online again after $(( $(date +%s) - started ))s"
+            exit 0
+          fi
+          sleep 1
+        done
+        echo "::error::The previous release didn't come online either. Check data/logs/bot.log on the server."
+        exit 1

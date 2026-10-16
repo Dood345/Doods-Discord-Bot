@@ -115,14 +115,14 @@ def current_version_sync(db_path: str) -> Tuple[int, bool]:
         return conn.execute("SELECT COALESCE(MAX(version), 0) FROM schema_version").fetchone()[0], True
 
 
-def backup(db_path: str, label: str = "premigrate") -> str:
-    """Consistent copy via SQLite's backup API into data/backups, keeping the newest BACKUPS_KEPT."""
+def backup(db_path: str, label: str = "premigrate", keep: int = BACKUPS_KEPT) -> str:
+    """Consistent copy via SQLite's backup API into data/backups, keeping the newest `keep` with this label."""
     folder = os.path.join(os.path.dirname(db_path) or ".", "backups")
     os.makedirs(folder, exist_ok=True)
     target = os.path.join(folder, f"auto-{label}-{datetime.now():%Y%m%d-%H%M%S}.db")
     with sqlite3.connect(db_path) as src, sqlite3.connect(target) as dst:
         src.backup(dst)
-    for old in sorted(glob.glob(os.path.join(folder, "auto-*.db")))[:-BACKUPS_KEPT]:
+    for old in sorted(glob.glob(os.path.join(folder, f"auto-{label}-*.db")))[:-keep]:
         os.remove(old)
     return target
 

@@ -95,9 +95,9 @@ Deliverable also includes the `add-ai-tool` skill (written once the registry's r
 
 ## Phase 4 — Ops
 
-- Nightly SQLite backup (`sqlite3 .backup`) with rotation on the server.
-- Deploy: health check after `systemctl restart`; auto-rollback to previous release dir if the bot isn't online in 60 s.
-- Parametrize the deploy path (`/home/<user>/discordBot`) via a repo variable.
+- [x] Nightly SQLite backup at 03:30 local with 14-day rotation (in the bot, `commands/maintenance.py`; catches up at startup if missed).
+- [x] Deploy health check: waits for `data/ready.json` after the restart (120 s) and rolls back to the snapshotted previous release (code + venv) if it never appears; `simulate_failure` dispatch input to test it.
+- [x] Deploy path from the `DEPLOY_PATH` repository variable (defaults to the current path).
 
 ---
 

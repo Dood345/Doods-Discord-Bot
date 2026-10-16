@@ -35,6 +35,7 @@ from commands.test_chamber import TestChamber
 from commands.game_night import GameNight
 from commands.announcements import Announcements
 from commands.voice_cave import VoiceCave
+from commands.maintenance import Maintenance, write_ready_marker
 from services.gift_service import GiftService
 from services.game_service import GameService
 from services.homelab_service import HomelabService
@@ -109,12 +110,17 @@ class DoodsBot(commands.Bot):
         await self.add_cog(GameNight(self))
         await self.add_cog(Announcements(self))
         await self.add_cog(VoiceCave(self))
+        await self.add_cog(Maintenance(self))
         
         logger.info("All cogs loaded successfully")
     
     async def on_ready(self):
         """Called when bot connects to Discord"""
         logger.info(f'🚀 {self.user} is online! Serving {len(self.guilds)} guilds.')
+        try:
+            write_ready_marker(guilds=len(self.guilds))  # the deploy's health check waits for this
+        except OSError as e:
+            logger.warning(f"Couldn't write the ready marker: {e}")
         
         # Set bot status
         await self.change_presence(

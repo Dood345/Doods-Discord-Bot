@@ -83,7 +83,7 @@ Never commit real Discord guild/user/channel IDs, LAN IPs/hostnames, friends' na
 
 ## Deployment / CI
 
-- Push to `main` → `.github/workflows/deploy.yml` on a self-hosted runner: rsyncs the repo to `/home/dood345/discordBot/` (excluding `.env`, `data/`, `venv`, cookies file), runs `uv sync --no-dev`, restarts `discordBot.service` via systemd. Anything under `data/` (DB, logs, `server_contexts.json`) is server-local and never deployed; tracked content like dialogue lives in `content/`.
+- Push to `main` → `.github/workflows/deploy.yml` on a self-hosted runner: snapshots the running release (code + venv) to `<DEPLOY_PATH>.prev`, rsyncs the repo to `DEPLOY_PATH` (repo variable, default `/home/dood345/discordBot`; excluding `.env`, `data/`, `venv`, cookies file), runs `uv sync --no-dev`, restarts `discordBot.service`, then waits up to 120 s for `data/ready.json` (written in `on_ready` by `commands/maintenance.py`) to be newer than the restart. If it isn't, the job restores `.prev`, restarts, and fails red. Run the workflow manually with `simulate_failure` to exercise the rollback. The runner only has passwordless `sudo systemctl restart discordBot.service`. `commands/maintenance.py` also writes a nightly DB backup at 03:30 local (`data/backups/auto-nightly-*.db`, 14 kept; one at startup if the newest is >26 h old). Anything under `data/` (DB, logs, `server_contexts.json`) is server-local and never deployed; tracked content like dialogue lives in `content/`.
 - PRs to `main`/`dev` → `build.yml`: `uv sync`, compileall, `pytest`, privacy guard.
 - Workflow is feature branch → `dev` → `main`. Never push straight to `main` (it deploys).
 - Overhaul roadmap and per-phase kickoff prompts: `docs/ROADMAP.md`.

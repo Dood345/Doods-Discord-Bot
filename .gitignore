@@ -18,3 +18,9 @@ htmlcov/
 
 # Private per-server config (real guild IDs / names)
 data/server_contexts.json
+
+# Runtime state written by the bot on the server
+data/backups/
+data/ready.json
+data/steam_import_cache.json
+data/steam_dryrun.log
