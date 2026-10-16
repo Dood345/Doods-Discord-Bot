@@ -21,6 +21,7 @@ dependencies = [
     "edge-tts",
     "aiosqlite",
     "tzdata>=2026.5",
+    "pillow>=12.1.1",
 ]
 
 [dependency-groups]

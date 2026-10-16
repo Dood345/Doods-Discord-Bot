@@ -24,7 +24,7 @@ def test_badge_and_poster_render():
 
 
 def test_subject_number_is_stable_and_not_the_id():
-    uid = 123456789012345678
+    uid = 987654321
     assert subject_number(uid) == subject_number(uid) and len(subject_number(uid)) == 5
     assert str(uid) not in subject_number(uid) and clearance_for(uid) == clearance_for(uid)
 
