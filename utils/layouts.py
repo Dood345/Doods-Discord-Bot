@@ -180,7 +180,7 @@ def _game_line(g: dict) -> str:
 
 def game_library_card(games: Sequence[dict], filters: Sequence[str], grouped: bool) -> Card:
     """/game list: grouped by status (or a flat list when filtered by status), inside the 4000-char limit."""
-    summary = " · ".join(filters)
+    summary = clip(" · ".join(filters), 300)  # tag: is free text
     items: List[ui.Item] = [text("## 🔬 Aperture Science Mandatory Fun Modules\n"
                                  + (f"{summary}\n" if summary else "") + f"-# {len(games)} simulations on file")]
     if grouped:
@@ -188,7 +188,7 @@ def game_library_card(games: Sequence[dict], filters: Sequence[str], grouped: bo
         groups = [(s, gs) for s, gs in groups if gs]
     else:
         groups = [("", list(games))]
-    budget = (3400 // max(1, len(groups))) if groups else 0
+    budget = 3200 // max(1, len(groups)) - 40  # minus each group's heading
     for status, group in groups:
         items.append(separator())
         title = f"**📂 {status.title()}** ({len(group)})\n" if status else ""

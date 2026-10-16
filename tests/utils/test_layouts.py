@@ -138,3 +138,12 @@ def test_elapsed_seconds_respects_pause():
     assert layouts.elapsed_seconds(100.0, None, now=160.0) == 60.0
     assert layouts.elapsed_seconds(100.0, 130.0, now=500.0) == 30.0
     assert layouts.elapsed_seconds(None, None) is None
+
+
+def test_game_library_card_clips_a_huge_tag_filter():
+    games = [game("G" * 90 + str(i), s) for i in range(300) for s in GAME_STATUSES]
+    card = layouts.game_library_card(games, ["Tag: **" + "x" * 5000 + "**"], grouped=True)
+    assert_within_limits(card)
+
+
+GAME_STATUSES = ("playing", "wishlisted", "unknown", "played", "avoid")
