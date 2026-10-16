@@ -16,6 +16,7 @@ Limits worth knowing:
 """
 
 import importlib
+import importlib.util
 import json
 import logging
 import sys
@@ -23,6 +24,8 @@ from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Tuple
 
 from discord.ext import commands
+
+from utils.error_reporting import scrub
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +68,8 @@ SERVICES = {
                         lambda bot: sys.modules["services.game_service"].GameService(bot.db, bot.dialogue),
                         ["commands.game_commands"]),
     "music_library": ServiceSpec("music_library", ["services.music_library"],
-                                 lambda bot: sys.modules["services.music_library"].MusicLibrary()),
+                                 lambda bot: sys.modules["services.music_library"].MusicLibrary(),
+                                 ["commands.music"]),  # music imports match_score/constants from it
 }
 
 
@@ -86,10 +90,10 @@ def resolve(name: str, extensions: List[str] = EXTENSIONS) -> Optional[str]:
     return None
 
 
-def resolve_loaded_cog(bot, name: str) -> Optional[str]:
-    """A cog class name ('MusicCommands') -> the extension it came from."""
+def resolve_loaded_cog(bot, name: str, extensions: List[str] = EXTENSIONS) -> Optional[str]:
+    """A cog class name ('MusicCommands') -> the extension it came from (only reloadable ones)."""
     for cog_name, cog in getattr(bot, "cogs", {}).items():
-        if cog_name.lower() == name.strip().lower():
+        if cog_name.lower() == name.strip().lower() and type(cog).__module__ in extensions:
             return type(cog).__module__
     return None
 
@@ -113,7 +117,8 @@ async def _before_reload(bot, ext: str) -> None:
 
 def describe_error(error: BaseException) -> str:
     original = getattr(error, "original", None) or error.__cause__ or error
-    return f"{type(original).__name__}: {original}"[:300]
+    # Posted in Discord: no paths/URLs/IPs/keys (the full traceback is only in the log)
+    return scrub(f"{type(original).__name__}: {original}")[:300]
 
 
 async def reload_one(bot, ext: str) -> ReloadResult:
@@ -144,6 +149,17 @@ async def reload_service(bot, name: str, services: dict = SERVICES) -> List[Relo
     cached the old one. If the import or construction fails, the old instance stays."""
     spec = services[name]
     try:
+        # Compile everything first: a syntax error in the second module mustn't leave the first half-swapped
+        for module in spec.modules:
+            found = importlib.util.find_spec(module)
+            source = found.loader.get_source(module) if found and found.loader else None
+            if source is None:
+                raise ModuleNotFoundError(module)
+            compile(source, found.origin or module, "exec")
+    except Exception as e:
+        logger.exception(f"Reloading service {name} failed")
+        return [ReloadResult(f"service {name}", False, describe_error(e))]
+    try:
         for module in spec.modules:
             if module in sys.modules:
                 importlib.reload(sys.modules[module])
@@ -151,8 +167,9 @@ async def reload_service(bot, name: str, services: dict = SERVICES) -> List[Relo
                 importlib.import_module(module)
         instance = spec.build(bot)
     except Exception as e:
+        # The module body ran partway: the old instance stays, but on half-updated module globals
         logger.exception(f"Reloading service {name} failed")
-        return [ReloadResult(f"service {name}", False, describe_error(e))]
+        return [ReloadResult(f"service {name}", False, describe_error(e) + " (fix it and reload again, or restart)")]
     setattr(bot, spec.attr, instance)
     logger.info(f"Reloaded service {name}")
     return [ReloadResult(f"service {name}", True)] + [await reload_one(bot, ext) for ext in spec.dependents]

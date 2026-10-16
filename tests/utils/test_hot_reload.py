@@ -176,7 +176,7 @@ def test_resolve_accepts_short_names():
 async def test_resolve_loaded_cog_by_class_name(bot, ext_dir):
     write_cog(ext_dir, "alpha", "Alpha", 1)
     await bot.load_extension("hr_exts.alpha")
-    assert resolve_loaded_cog(bot, "alpha") == "hr_exts.alpha"
+    assert resolve_loaded_cog(bot, "alpha", ["hr_exts.alpha"]) == "hr_exts.alpha"
 
 
 def test_every_cog_module_is_a_registered_extension():
@@ -229,3 +229,28 @@ def test_dialogue_reload_refuses_broken_json(tmp_path):
     path.write_text('{"cave": ', encoding="utf-8")
     assert not reload_dialogue(fake_bot).ok
     assert dialogue.get("cave", "hi") == "hey there"  # not wiped
+
+
+async def test_service_syntax_error_reloads_nothing(bot, ext_dir):
+    (ext_dir / "dep.py").write_text("VALUE = 1\n")
+    (ext_dir / "svc.py").write_text("class Svc:\n    VERSION = 1\n")
+    import hr_exts.dep  # noqa: F401
+    import hr_exts.svc  # noqa: F401
+    (ext_dir / "dep.py").write_text("VALUE = 2\n")
+    (ext_dir / "svc.py").write_text("class Svc(:\n")
+    specs = {"svc": ServiceSpec("svc", ["hr_exts.dep", "hr_exts.svc"], lambda b: None)}
+
+    results = await reload_service(bot, "svc", specs)
+
+    assert not results[0].ok and "SyntaxError" in results[0].message
+    assert sys.modules["hr_exts.dep"].VALUE == 1  # the first module wasn't swapped either
+
+
+def test_error_text_posted_in_discord_is_scrubbed():
+    text = hot_reload.describe_error(RuntimeError("can't reach http://10.0.0.50:7125/printer"))
+    assert "10.0.0.50" not in text and text.startswith("RuntimeError")
+
+
+async def test_reload_cog_by_class_name_ignores_non_extensions(bot):
+    await bot.add_cog(hot_reload.Reload(bot))
+    assert resolve_loaded_cog(bot, "Reload") is None
