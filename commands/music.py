@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 from config import BotConfig
 from services.music_library import PLEX_PREFIX, MATCH_THRESHOLD, match_score
 from services.music_sessions import REWIND, MusicSessionStore, fmt_time, snapshot
+from utils.layouts import elapsed_seconds, queue_card
 
 logger = logging.getLogger(__name__)
 
@@ -805,17 +806,12 @@ class MusicCommands(commands.Cog):
             await interaction.response.send_message("The queue is empty. Silence is inefficient.")
             return
 
-        current_title = f"{current[1]} by {current[2]}" if current else "Nothing"
-        
-        desc = f"**Now Playing:** {current_title}\n\n**Up Next:**\n"
-        for i, (url, title, uploader) in enumerate(list(queue)[:10], 1):
-            desc += f"`{i}.` {title} by {uploader}\n"
-        
-        if len(queue) > 10:
-            desc += f"*...and {len(queue)-10} more.*"
-
-        embed = discord.Embed(title="🎧 Audio Testing Queue", description=desc, color=0xFFA500)
-        await interaction.response.send_message(embed=embed)
+        vc = interaction.guild.voice_client if interaction.guild else None
+        channel = interaction.guild.get_channel(target_channel_id) if interaction.guild else None
+        card = queue_card(current, queue, channel_name=getattr(channel, "name", None),
+                          elapsed=elapsed_seconds(player.start_time, player.pause_start_time) if current else None,
+                          paused=bool(vc and vc.is_paused()), source=self.track_source)
+        await interaction.response.send_message(view=card)
         
     @app_commands.command(name="clear", description="Clear the upcoming tracks")
     async def clear(self, interaction: discord.Interaction) -> None:
