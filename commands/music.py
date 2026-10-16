@@ -811,7 +811,8 @@ class MusicCommands(commands.Cog):
         card = queue_card(current, queue, channel_name=getattr(channel, "name", None),
                           elapsed=elapsed_seconds(player.start_time, player.pause_start_time) if current else None,
                           paused=bool(vc and vc.is_paused()), source=self.track_source)
-        await interaction.response.send_message(view=card)
+        # Titles come from YouTube/SoundCloud/Plex, and unlike embeds a v2 card can ping: never allow it
+        await interaction.response.send_message(view=card, allowed_mentions=discord.AllowedMentions.none())
         
     @app_commands.command(name="clear", description="Clear the upcoming tracks")
     async def clear(self, interaction: discord.Interaction) -> None:

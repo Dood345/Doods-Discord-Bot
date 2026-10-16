@@ -1,13 +1,15 @@
 """Components v2 message layouts (discord.ui.LayoutView) for the bot's richer replies.
 
 Pure builders: each takes plain data and returns a `Card`, so they're testable without Discord.
-A v2 message can't also carry `content` or embeds: send it as `send(view=card)` (plus `files=` for attachments
+A v2 message can't also carry `content` or embeds: send it as `send(view=card)`. Unlike embeds, mentions in
+a TextDisplay DO ping, so always pass `allowed_mentions=discord.AllowedMentions.none()` with a card (plus `files=` for attachments
 referenced as `attachment://name`). Discord caps a message at 40 components and 4000 characters of text across
 all TextDisplays; `fit_lines` keeps lists inside a budget and `Card` checks the total.
 """
 
 import re
 import time
+from urllib.parse import urlparse
 from typing import Callable, Iterable, List, Optional, Sequence, Tuple
 
 import discord
@@ -16,6 +18,7 @@ from discord import ui
 APERTURE_ORANGE = 0xFFA500
 MAX_TEXT = 4000
 YOUTUBE_ID = re.compile(r"(?:youtu\.be/|[?&]v=|/shorts/)([A-Za-z0-9_-]{11})")
+YOUTUBE_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"}
 
 Track = Tuple[str, str, str]  # (url, title, uploader)
 
@@ -72,7 +75,9 @@ def progress_bar(fraction: float, width: int = 12) -> str:
 
 def youtube_thumbnail(url: str) -> Optional[str]:
     """Public thumbnail for a YouTube video link (fetched by Discord, not by the bot); None for anything else."""
-    match = YOUTUBE_ID.search(url or "")
+    if (urlparse(url or "").hostname or "").lower() not in YOUTUBE_HOSTS:
+        return None
+    match = YOUTUBE_ID.search(url)
     return f"https://i.ytimg.com/vi/{match.group(1)}/hqdefault.jpg" if match else None
 
 

@@ -131,6 +131,7 @@ def test_youtube_thumbnail_only_for_youtube():
     assert layouts.youtube_thumbnail("https://youtu.be/dQw4w9WgXcQ")
     assert layouts.youtube_thumbnail("https://soundcloud.com/a/b") is None
     assert layouts.youtube_thumbnail("plex:/library/parts/1") is None
+    assert layouts.youtube_thumbnail("https://soundcloud.com/a?v=dQw4w9WgXcQ") is None
 
 
 def test_elapsed_seconds_respects_pause():
