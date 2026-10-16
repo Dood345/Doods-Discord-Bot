@@ -1,23 +1,22 @@
 ---
 name: ship-check
-description: Pre-PR / pre-merge verification for the Discord bot - tests, compile, import smoke test, privacy guard, env/config drift, and the manual deploy steps the owner must do. Use before opening a PR to dev or merging dev into main.
+description: Pre-ship verification for the Discord bot - tests, lint, compile, import smoke test, privacy guard, env/config drift, migrations, real-model routing when the agent changed, and the manual steps the owner must do. Use before shipping (the `ship` skill runs tests and lint again, but not the rest).
 ---
 
 # Ship check
 
-Run everything; report pass/fail for each with the actual output on failure. Don't declare success on partial results.
+Run everything; report pass/fail for each with the actual output on failure. Don't declare success on partial results. On Windows use `python -m uv`.
 
-On Windows use `python -m uv`; on Linux/macOS use `uv`.
-
-1. **Branch.** `git branch --show-current` must not be `main` (pushing to `main` deploys immediately). PRs target `dev`.
+1. **Branch.** `git branch --show-current` is a feature branch, not `main`/`dev`.
 2. **Tests.** `python -m uv run pytest -q`
-3. **Compile.** `python -m uv run python -m compileall -q . -x "\.venv"`
-4. **Import smoke test.** `python -m uv run python -c "import main"` (catches cog import errors and config-time crashes without connecting to Discord).
-5. **Privacy guard (same as CI).**
-   `git grep -nE '\b[0-9]{17,20}\b|\b192\.168\.[0-9]+\.[0-9]+\b' -- . ':!uv.lock' ':!*.example.json'` must print nothing. Also make sure `git status --short` shows no `.env`, `*.db`, cookies, `.coverage` or `data/server_contexts.json`. For a deeper look, use the `privacy-auditor` agent.
-6. **Env drift.** Every `os.getenv('X')` in the code (`git grep -ohE "getenv\('[A-Z_]+'"`) has a line in `.env.example`. List any env vars *added in this branch* (`git diff dev...HEAD -- config.py .env.example`).
-7. **Review.** If the diff is more than trivial and `bot-reviewer` hasn't run on it, run it.
-8. **Report** in this shape:
-   - Checks: pass/fail list
-   - Manual steps before merging to `main`: env vars to add to the server's `.env`; private files to create under `data/` on the server (e.g. `data/server_contexts.json`); DB columns that need an `ALTER TABLE`
-   - After deploy: `!sync` if slash commands were added/renamed/changed
+3. **Lint.** `python -m uv run ruff check .` (F + E9: undefined names, unused imports, syntax).
+4. **Import smoke test.** `python -m uv run python -c "import main"` (catches cog import errors and config-time crashes without connecting to Discord; fine here, never in tests).
+5. **Privacy guard (same as CI).** `git grep -nE '\b[0-9]{17,20}\b|\b192\.168\.[0-9]+\.[0-9]+\b' -- . ':!uv.lock' ':!*.example.json'` prints nothing. `git status --short` shows no `.env`, `*.db`, cookies, `data/` files. Deeper look: `privacy-auditor` agent.
+6. **Env drift.** Every `os.getenv('X')` has a line in `.env.example`, and new features have a line in `utils/config_report.py`. List env vars added in this branch (`git diff main...HEAD -- config.py .env.example`).
+7. **Schema.** If the diff touches `setup_tables` or table definitions of an existing table, a migration exists with a prod-fixture test (`db-migration` skill).
+8. **Agent.** If the system prompt, tool descriptions or tool schemas changed: `python -m uv run python scripts/route_bench.py` passes against the real model (`real-model-check` skill).
+9. **Review.** Non-trivial diff and `bot-reviewer` hasn't run on it: run it.
+10. **Report:**
+    - Checks: pass/fail list
+    - Before shipping: env vars to add to the server's `.env`; private files under `data/` on the server
+    - After deploy: `!sync .` per server (or `!sync`) if commands/context menus changed; opt-in commands managers must run; what can only be verified in Discord

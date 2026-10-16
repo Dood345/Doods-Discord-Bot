@@ -12,7 +12,7 @@ Follow these steps in order. Read CLAUDE.md first if you haven't.
 - New feature area? Create `commands/<area>_commands.py` with a `commands.Cog` subclass. Then **import it and `await self.add_cog(...)` in `DoodsBot.setup_hook()` in `main.py`**. Forgetting this is the #1 way a command silently doesn't exist.
 
 ## 2. Put logic in a service, not the cog
-Anything touching the DB or with real rules goes in `services/<area>_service.py` (constructor takes `db` and, if it returns user-facing text, `dialogue`). Instantiate it in `DoodsBot.__init__` as `self.<area>_service` and read it in the cog via `bot.<area>_service`. New tables go in `DatabaseHandler.setup_tables()`. Remember `CREATE TABLE IF NOT EXISTS` won't add columns to an existing table on the server.
+Anything touching the DB or with real rules goes in `services/<area>_service.py` (constructor takes `db` and, if it returns user-facing text, `dialogue`). Instantiate it in `DoodsBot.__init__` as `self.<area>_service` and read it in the cog via `bot.<area>_service`. New tables go in `DatabaseHandler.setup_tables()`. Changing an existing table needs a migration (`db-migration` skill): `CREATE TABLE IF NOT EXISTS` won't touch the server's existing tables.
 
 Scope data by `interaction.guild_id` unless it's deliberately per-user-global.
 
@@ -25,7 +25,10 @@ async def thing(self, interaction: discord.Interaction, target: str):
     result = await self.bot.thing_service.do(interaction.user.id, interaction.guild_id, target)
     await interaction.followup.send(result)
 ```
-- Use `defer()` + `followup` for anything slow (AI, HTTP, ComfyUI, yt-dlp). Otherwise `response.send_message`.
+- Use `defer()` + `followup` for anything slow (AI, HTTP, ComfyUI, yt-dlp, several member lookups), and call `defer()` *before* the slow call: Discord drops the interaction after 3 s. Otherwise `response.send_message`.
+- Looking up other users: `utils.members.member_name` / `find_member` (no members intent, so `guild.get_member` is often `None`). Don't ping: `allowed_mentions=discord.AllowedMentions.none()`.
+- Anything that posts on its own or awards points is opt-in per server: a manager-only enable command storing a flag in `guild_settings`, checked at runtime.
+- State that must survive a deploy (open questions, buttons, sessions) goes in the DB; persistent buttons are `discord.ui.DynamicItem`s.
 - Blocking libraries (`requests`, `urllib`, `ping3`, `yt_dlp`) go through `await self.bot.loop.run_in_executor(None, fn, *args)`.
 - Homelab or privileged? First line after the signature: `if not await self.check_auth(interaction): return` (see `commands/homelab_commands.py`).
 - Private/noisy responses: `ephemeral=True`.
@@ -43,4 +46,6 @@ Add `tests/services/test_<area>_service.py` using the `temp_db` fixture (async t
 ## 7. Finish
 - Run the `ship-check` skill.
 - Tell the user: run `!sync .` in their test server (instant) or `!sync` (global, ~1 h) after deploy, and list any env vars to add to the server's `.env`.
-- If the AI agent (docs/ROADMAP.md Phase 1) exists, consider exposing the feature as an AI tool too.
+- Consider exposing the feature as a Cave tool (`utils/agent_tools.py`), with a routing-list line in the system prompt and a `scripts/route_bench.py` case (`real-model-check` skill).
+- New env vars/features: add a line to `utils/config_report.py`.
+- Ship with the `ship` skill.

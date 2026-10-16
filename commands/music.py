@@ -78,7 +78,7 @@ def needs_buffering(info: dict) -> bool:
 def buffer_to_disk(url: str, info: dict) -> str:
     """Download the already-chosen format of `url` into BUFFER_DIR (blocking; run in an executor)."""
     os.makedirs(BUFFER_DIR, exist_ok=True)
-    opts = dict(YDL_OPTIONS, format=info['format_id'], noplaylist=True, extract_flat=False,
+    opts = dict(YDL_OPTIONS, format=info['format_id'], noplaylist=True, extract_flat=False, noprogress=True,
                 outtmpl=os.path.join(BUFFER_DIR, '%(extractor)s-%(id)s.%(ext)s'))
     with yt_dlp.YoutubeDL(opts) as ydl:
         result = ydl.extract_info(info.get('webpage_url') or url, download=True)

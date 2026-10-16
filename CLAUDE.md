@@ -77,6 +77,13 @@ Cogs live in `commands/` and are registered explicitly in `DoodsBot.setup_hook()
 **Resume after restarts** (`services/music_sessions.py`): the music cog snapshots every connected player (current track, position, queue, paused, notify channel) to `music_sessions` every 10 s; the table always mirrors the live players, so `/stop` or an empty queue removes a session. On startup the save loop first resumes sessions younger than 30 min whose voice channel still has people in it: rejoin, seek to the saved position minus 3 s via `seek_position`, re-pause if it was paused, and post a note. `cog_unload` cancels the loop before clearing players so the last snapshot survives shutdown.
 "Sign in to confirm you're not a bot" for popular videos means YouTube has flagged the home IP; stop testing for a few hours rather than retrying.
 
+## Working in this repo (skills, agents, scripts)
+
+- Skills (`.claude/skills/`): `new-slash-command`, `ship-check`, `ship` (`scripts/ship.ps1`: tests + lint -> dev CI -> main deploy + health check), `real-model-check` (`scripts/route_bench.py` against the real model; `scripts/prod_replay.py` on the server against a prod-DB copy), `db-migration`, `doodlab-ops`.
+- Agents (`.claude/agents/`): `bot-reviewer` (diff review), `privacy-auditor` (public-repo audit), `ops-checker` (read-only production health), `discord-bug-investigator` (root-cause a Discord report with logs + replays).
+- Editing on this Windows box: many files are CRLF. Use the Edit tool, or a patch script written with the Write tool; inline bash heredocs turn backslash-n / backslash-r escapes into real line breaks and silently break replacements. Check a scripted edit actually applied before committing.
+- Bug reports from Discord: reproduce before fixing (logs -> `prod_replay.py` -> fix -> replay again).
+
 ## Privacy rules (repo is public)
 
 Never commit real Discord guild/user/channel IDs, LAN IPs/hostnames, friends' names, or homelab URLs. Real values go in `.env` (documented in `.env.example`) or private files under `data/` (gitignored, and preserved on the server because deploy excludes `data/`). CI's privacy-guard step fails on 17–20 digit numbers and `192.168.x.x` in tracked files. Any new feature toggle also belongs in `utils/config_report.py` (startup on/off log). Any new env var must be added to `.env.example` and the user told to add it to the server's `.env` before merging to `main`.
