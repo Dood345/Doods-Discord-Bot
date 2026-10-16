@@ -10,6 +10,7 @@ import discord
 from utils.agent import Tool, ToolContext, ToolRegistry
 from utils.auth import is_authorized
 from utils.confirm import post_confirmation
+from utils.members import member_name
 
 
 async def _recommend_games(ctx: ToolContext, players: int = 0, tag: str = None) -> str:
@@ -104,8 +105,7 @@ async def _science_points(ctx: ToolContext) -> str:
     board = await points_service.leaderboard(ctx.guild.id, limit=5)
     names = []
     for i, (uid, pts) in enumerate(board, 1):
-        member = ctx.guild.get_member(uid) if hasattr(ctx.guild, "get_member") else None
-        names.append(f"{i}. {member.display_name if member else 'a former test subject'} ({pts})")
+        names.append(f"{i}. {await member_name(ctx.guild, uid)} ({pts})")
     return mine + ". Top of this server's leaderboard: " + ("; ".join(names) if names else "nobody yet") + "."
 
 

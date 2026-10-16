@@ -31,6 +31,7 @@ from commands.context_menus import ContextMenus
 from commands.points_commands import PointsCommands
 from commands.test_chamber import TestChamber
 from commands.game_night import GameNight
+from commands.announcements import Announcements
 from services.gift_service import GiftService
 from services.game_service import GameService
 from services.homelab_service import HomelabService
@@ -100,6 +101,7 @@ class DoodsBot(commands.Bot):
         await self.add_cog(PointsCommands(self))
         await self.add_cog(TestChamber(self))
         await self.add_cog(GameNight(self))
+        await self.add_cog(Announcements(self))
         
         logger.info("All cogs loaded successfully")
     

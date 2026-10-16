@@ -79,7 +79,7 @@ Deliverable also includes the `add-ai-tool` skill (written once the registry's r
 - **Science Points economy.** ✅ ledger + achievements + `/points` `/leaderboard` + Cave tool; activity points so far (trivia next). XP for participating, trivia wins, game-night attendance; `/leaderboard`; Aperture-themed achievements ("Survived Test Chamber 19").
 - **Daily Test Chamber.** ✅ opt-in `/testchamber channel:`, Open Trivia DB, restart-proof buttons, points + Cave announcements. Scheduled daily trivia or riddle (`tasks.loop`), first correct answer gets points; Cave announces winners in character.
 - **Game Night Director.** ✅ `/gamenight` (picks fit the voice channel's head count, rating-weighted, skips 'avoid'; poll + Discord scheduled event; needs Manage Events). Still open: attendance points, a Cave tool. Cave proposes 3 games from the library filtered by who's online/in voice and player counts, runs a poll, creates a Discord Scheduled Event, pings attendees.
-- **Facility announcements.** Opt-in proactive posts: printer job finished (poll Moonraker → ping you with webcam snapshot), new media available (Overseerr webhook), birthday shout-outs (opt-in only).
+- **Facility announcements.** ✅ opt-in `/announcements channel:`, new media (Overseerr poll), `/birthday set`, printer-finished DM to the owner. Opt-in proactive posts: printer job finished (poll Moonraker → ping you with webcam snapshot), new media available (Overseerr webhook), birthday shout-outs (opt-in only).
 - **Voice Cave.** Cave joins voice and speaks announcements/answers with edge-tts (plumbing already exists in music).
 - **Image fun.** `/portrait @user` (test-subject ID badge), `/poster` (Aperture propaganda poster) using ComfyUI.
 

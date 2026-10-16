@@ -70,6 +70,17 @@ class DatabaseHandler:
                              value TEXT,
                              PRIMARY KEY (guild_id, key))''')
 
+                # Facility announcements: what's been announced (never repeat), and opt-in birthdays
+                await conn.execute('''CREATE TABLE IF NOT EXISTS announced
+                            (item_key TEXT PRIMARY KEY,
+                             created_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+                await conn.execute('''CREATE TABLE IF NOT EXISTS birthdays
+                            (guild_id INTEGER,
+                             user_id INTEGER,
+                             month INTEGER,
+                             day INTEGER,
+                             PRIMARY KEY (guild_id, user_id))''')
+
                 # Daily Test Chamber: one trivia question per server per local day
                 await conn.execute('''CREATE TABLE IF NOT EXISTS trivia_questions
                             (id INTEGER PRIMARY KEY AUTOINCREMENT,

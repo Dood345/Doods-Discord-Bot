@@ -6,6 +6,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+from utils.members import member_name
 from services.test_chamber_service import ATTRIBUTION, ClosedResult, OpenQuestion
 
 logger = logging.getLogger(__name__)
@@ -144,10 +145,8 @@ class TestChamber(commands.Cog):
         for result in await self.service.close_due():
             await self.announce(result)
 
-    def _name(self, guild_id: int, user_id: int) -> str:
-        guild = self.bot.get_guild(guild_id)
-        member = guild.get_member(user_id) if guild else None
-        return member.display_name if member else "a mystery test subject"
+    async def _name(self, guild_id: int, user_id: int) -> str:
+        return await member_name(self.bot.get_guild(guild_id), user_id)
 
     async def announce(self, result: ClosedResult):
         q = result.question
@@ -161,7 +160,7 @@ class TestChamber(commands.Cog):
         except discord.HTTPException:
             pass
 
-        winner = self._name(q.guild_id, result.first) if result.first else None
+        winner = await self._name(q.guild_id, result.first) if result.first else None
         others = len(result.correct) - 1 if result.correct else 0
         facts = (f"Question: {q.question.question} Answer: {answer}. {result.total_answers} people answered. "
                  + (f"First correct: {winner} (+10 Science Points). {others} other(s) also got it (+3 each)."
@@ -175,7 +174,7 @@ class TestChamber(commands.Cog):
                     if winner else "Nobody solved today's Test Chamber. I'm not angry. I'm disappointed.")
         lines = [f"🧪 **TEST CHAMBER CLOSED** · Answer: **{answer}**", line]
         for uid, achievements in result.achievements.items():
-            lines.append(f"🏆 {self._name(q.guild_id, uid)} unlocked " + ", ".join(a.label for a in achievements))
+            lines.append(f"🏆 {await self._name(q.guild_id, uid)} unlocked " + ", ".join(a.label for a in achievements))
         await channel.send("\n".join(lines)[:2000], allowed_mentions=discord.AllowedMentions.none())
 
 

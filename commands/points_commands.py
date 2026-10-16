@@ -4,12 +4,11 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from utils.members import member_name
+
 MEDALS = ["🥇", "🥈", "🥉"]
 
 
-def display_name(guild: discord.Guild, user_id: int) -> str:
-    member = guild.get_member(user_id) if guild else None
-    return member.display_name if member else "a former test subject"
 
 
 class PointsCommands(commands.Cog):
@@ -44,7 +43,7 @@ class PointsCommands(commands.Cog):
             await interaction.response.send_message(self.bot.dialogue.get(
                 "cave_johnson", "leaderboard_empty", fallback="Nobody has earned a single Science Point. Disgraceful."))
             return
-        rows = [f"{MEDALS[i] if i < 3 else f'`#{i + 1}`'} {display_name(interaction.guild, uid)}: **{pts}**"
+        rows = [f"{MEDALS[i] if i < 3 else f'`#{i + 1}`'} {await member_name(interaction.guild, uid)}: **{pts}**"
                 for i, (uid, pts) in enumerate(board)]
         await interaction.response.send_message("🏆 **SCIENCE POINTS LEADERBOARD**\n" + "\n".join(rows),
                                                 allowed_mentions=discord.AllowedMentions.none())
