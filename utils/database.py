@@ -15,10 +15,45 @@ class DatabaseHandler:
     def get_connection(self):
         return aiosqlite.connect(self.db_path)
     
+    # Tables whose old schema predates per-server data (no guild_id, globally UNIQUE names).
+    # CREATE TABLE IF NOT EXISTS never changes an existing table, so they're rebuilt once.
+    LEGACY_PER_SERVER_TABLES = ("games", "tags")
+
+    @staticmethod
+    async def _columns(conn, table: str) -> List[str]:
+        async with conn.execute(f"PRAGMA table_info({table})") as cursor:
+            return [row[1] for row in await cursor.fetchall()]
+
+    async def _set_aside_legacy_tables(self, conn) -> List[str]:
+        """Rename pre-guild_id tables to <name>_legacy so the current schema can be created."""
+        moved = []
+        for table in self.LEGACY_PER_SERVER_TABLES:
+            cols = await self._columns(conn, table)
+            if cols and "guild_id" not in cols:
+                # legacy_alter_table keeps game_tags' foreign keys pointing at the name "games"/"tags"
+                await conn.execute("PRAGMA legacy_alter_table = ON")
+                await conn.execute(f"ALTER TABLE {table} RENAME TO {table}_legacy")
+                await conn.execute("PRAGMA legacy_alter_table = OFF")
+                moved.append(table)
+                logger.warning(f"Migrating legacy '{table}' table to the per-server schema")
+        return moved
+
+    async def _restore_legacy_rows(self, conn, tables: List[str]):
+        """Copy rows from the set-aside tables (ids kept, guild_id 0 = shared by every server), then drop them."""
+        for table in tables:
+            new_cols = await self._columns(conn, table)
+            old_cols = await self._columns(conn, f"{table}_legacy")
+            shared = [c for c in old_cols if c in new_cols and c != "guild_id"]
+            col_list = ", ".join(shared)
+            await conn.execute(f"INSERT OR IGNORE INTO {table} ({col_list}, guild_id) "
+                               f"SELECT {col_list}, 0 FROM {table}_legacy")
+            await conn.execute(f"DROP TABLE {table}_legacy")
+
     async def setup_tables(self):
         """Initialize all database tables, now including the Recreation Repository."""
         try:
             async with self.get_connection() as conn:
+                legacy = await self._set_aside_legacy_tables(conn)
                 # --- Existing Tables ---
                 await conn.execute('''CREATE TABLE IF NOT EXISTS gifts
                             (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, guild_id INTEGER, item_name TEXT, link TEXT, claimed_by INTEGER)''')
@@ -159,7 +194,8 @@ class DatabaseHandler:
                              PRIMARY KEY (game_id, tag_id),
                              FOREIGN KEY(game_id) REFERENCES games(id) ON DELETE CASCADE,
                              FOREIGN KEY(tag_id) REFERENCES tags(id) ON DELETE CASCADE)''')
-                
+
+                await self._restore_legacy_rows(conn, legacy)
                 await conn.commit()
             logger.info("Aperture Science Database Tables Initialized.")
         except Exception as e:
