@@ -67,10 +67,20 @@ class MusicLibrary:
         """Best library track for a request, or a random track if it names an artist. None if no good match."""
         if not self.available:
             return None
-        container = await self._get("/hubs/search", {"query": query, "limit": 10})
+        # Plex search matches the whole phrase, so "play some Juicy J" must be sent as "juicy j"
+        search_text = " ".join(words(query)) or query
+        container = await self._get("/hubs/search", {"query": search_text, "limit": 10})
         if not container:
             return None
         hubs = {h.get("type"): h.get("Metadata") or [] for h in container.get("Hub", [])}
+
+        # A request that is exactly an artist's name ("play some 311") means "something by them",
+        # not a track that merely features them
+        for artist in hubs.get("artist", []):
+            if words(query) == words(artist.get("title", "")):
+                track = await self._random_track(artist)
+                if track:
+                    return track
 
         best, best_score = None, 0.0
         for meta in hubs.get("track", []):
@@ -81,14 +91,18 @@ class MusicLibrary:
         if best is not None and best_score >= MATCH_THRESHOLD:
             return self._track(best)
 
-        # "play some Daft Punk": the request is (mostly) an artist name
+        # No good track match: the request is mostly an artist name
         for artist in hubs.get("artist", []):
             if match_score(query, artist.get("title", "")) >= MATCH_THRESHOLD:
-                leaves = await self._get(f"/library/metadata/{artist['ratingKey']}/allLeaves")
-                tracks = [t for t in (self._track(m) for m in (leaves or {}).get("Metadata", [])) if t]
-                if tracks:
-                    return random.choice(tracks)
+                track = await self._random_track(artist)
+                if track:
+                    return track
         return None
+
+    async def _random_track(self, artist: Dict) -> Optional[Tuple[str, str, str]]:
+        leaves = await self._get(f"/library/metadata/{artist['ratingKey']}/allLeaves")
+        tracks = [t for t in (self._track(m) for m in (leaves or {}).get("Metadata", [])) if t]
+        return random.choice(tracks) if tracks else None
 
     def stream_source(self, queue_url: str) -> Tuple[str, str]:
         """(stream URL, extra ffmpeg before_options) for a plex: queue entry. Token goes in a header, not the URL."""

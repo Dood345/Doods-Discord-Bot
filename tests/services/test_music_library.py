@@ -86,3 +86,19 @@ async def test_youtube_links_skip_library_and_soundcloud():
     assert await music.resolve_track("https://www.youtube.com/watch?v=abc") == ("stream", "Mix", "DJ")
     lib.find.assert_not_awaited()
     assert MusicCommands.track_source(PLEX_PREFIX + "/p") == "📀 your library"
+
+
+async def test_plex_is_searched_without_filler_words():
+    lib = library_with({"/hubs/search": {"Hub": []}})
+    await lib.find("play some Daft Punk please")
+    assert lib._get.call_args_list[0].args[1]["query"] == "daft punk"
+
+
+async def test_exact_artist_request_beats_featured_track():
+    lib = library_with({
+        "/hubs/search": {"Hub": [
+            {"type": "track", "Metadata": [plex_track("Juicy Sweatsuits", "blackbear feat. Juicy J", "/p/feat")]},
+            {"type": "artist", "Metadata": [{"title": "Juicy J", "ratingKey": "5"}]}]},
+        "/library/metadata/5/allLeaves": {"Metadata": [plex_track("Bandz a Make Her Dance", "Juicy J", "/p/own")]},
+    })
+    assert (await lib.find("play some Juicy J"))[0] == PLEX_PREFIX + "/p/own"
