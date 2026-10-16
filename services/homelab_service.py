@@ -7,6 +7,7 @@ import aiohttp
 from ping3 import ping
 
 from config import BotConfig
+from services.printer_service import PrinterService
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,9 @@ class HomelabService:
 
     Results never include IPs/hostnames so they are safe to repeat in a public channel.
     """
+
+    def __init__(self, printer: Optional[PrinterService] = None):
+        self.printer = printer or PrinterService()
 
     async def _ping(self, service: Dict) -> Dict:
         try:
@@ -35,27 +39,8 @@ class HomelabService:
         return list(await asyncio.gather(*(self._ping(s) for s in services)))
 
     async def printer_status(self) -> Optional[Dict]:
-        """Moonraker print stats, or None if the printer isn't configured/reachable."""
-        if not BotConfig.PRINTER_HOST:
-            return None
-        url = f"http://{BotConfig.PRINTER_HOST}/printer/objects/query?print_stats"
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as response:
-                    if response.status != 200:
-                        return None
-                    data = await response.json()
-        except Exception as e:
-            logger.debug(f"Could not connect to printer: {e}")
-            return None
-
-        stats = data.get('result', {}).get('status', {}).get('print_stats', {})
-        duration = stats.get('print_duration', 0) or 0
-        return {
-            "state": stats.get('state', 'unknown'),
-            "filename": stats.get('filename') or None,
-            "duration": f"{int(duration // 3600)}h {int((duration % 3600) // 60)}m",
-        }
+        """Parsed Klipper/Moonraker status (see services/printer_service.py), or None if unreachable."""
+        return await self.printer.status()
 
     async def _arr_queue(self, name: str, url: Optional[str], key: Optional[str]) -> List[Dict]:
         if not url or not key:

@@ -10,6 +10,7 @@ import discord
 from utils.agent import Tool, ToolContext, ToolRegistry
 from utils.auth import is_authorized
 from utils.confirm import post_confirmation
+from services.printer_service import describe as describe_printer
 from utils.members import member_name
 
 
@@ -45,9 +46,7 @@ async def _printer_status(ctx: ToolContext) -> str:
     status = await ctx.bot.homelab_service.printer_status()
     if status is None:
         return "The 3D printer is unreachable or not configured."
-    if status["state"] == "printing":
-        return f"3D printer is printing {status['filename']} ({status['duration']} elapsed)."
-    return f"3D printer state: {status['state']}."
+    return "3D printer: " + describe_printer(status)
 
 
 async def _download_queue(ctx: ToolContext) -> str:
@@ -337,7 +336,7 @@ def build_cave_tools() -> ToolRegistry:
         ),
         Tool(
             name="printer_status",
-            description="Get the 3D printer's current state and job.",
+            description="Get the 3D printer's state, current job progress, time left and temperatures.",
             handler=_printer_status,
             requires_auth=True,
         ),

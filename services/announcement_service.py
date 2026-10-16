@@ -125,15 +125,14 @@ class AnnouncementService:
     # --- Printer ---
 
     async def printer_finished(self) -> Optional[Dict]:
-        """The printer's status when a print has just completed (printing -> complete), else None."""
+        """The printer's status when a print just ended (printing/paused -> complete, error or cancelled), else None."""
         status = await self.homelab.printer_status()
         if status is None:
             return None
         previous, self._printer_state = self._printer_state, status["state"]
-        if previous == "printing" and status["state"] == "complete":
+        if previous in ("printing", "paused") and status["state"] in ("complete", "error", "cancelled"):
             return status
         return None
-
 
 def _is_leap(year: int) -> bool:
     return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)

@@ -3,7 +3,6 @@
 import io
 import logging
 
-import aiohttp
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
@@ -123,20 +122,21 @@ class Announcements(commands.Cog):
         status = await self.service.printer_finished()
         if status is None or not BotConfig.OWNER_ID:
             return
+        printer = self.bot.homelab_service.printer
+        job = await printer.last_job() or {}
+        snap = await printer.snapshot()
+        files = [discord.File(io.BytesIO(snap), filename="print.jpg")] if snap else []
+        name = job.get("filename") or status.get("filename") or "your print"
+        duration = job.get("duration") or status["duration"]
+        filament = f", {job['filament_m']} m of filament" if job.get("filament_m") else ""
+        if status["state"] == "complete":
+            text = (f"🖨️ **Print finished:** {name} ({duration}{filament}). Matter has been constructed from hot "
+                    "plastic soup.")
+        else:
+            reason = f" ({status['message']})" if status.get("message") else ""
+            text = f"⚠️ **Print {status['state']}:** {name} after {duration}{reason}. Go check on it."
         owner = self.bot.get_user(BotConfig.OWNER_ID) or await self.bot.fetch_user(BotConfig.OWNER_ID)
-        files = []
-        if BotConfig.PRINTER_WEBCAM_URL:
-            try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(BotConfig.PRINTER_WEBCAM_URL, timeout=aiohttp.ClientTimeout(total=5)) as resp:
-                        if resp.status == 200:
-                            files.append(discord.File(io.BytesIO(await resp.read()), filename="print.jpg"))
-            except Exception as e:
-                logger.debug(f"Printer snapshot failed: {e}")
-        name = status.get("filename") or "your print"
-        await owner.send(f"🖨️ **Print finished:** {name} ({status['duration']}). Matter has been constructed from hot "
-                         "plastic soup.", files=files)
-
+        await owner.send(text, files=files)
 
 async def setup(bot):
     await bot.add_cog(Announcements(bot))

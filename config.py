@@ -24,6 +24,14 @@ def _load_server_contexts(path: str) -> dict:
         logger.error(f"Invalid server contexts file {path}: {e}")
     return {}
 
+def printer_address(env) -> tuple:
+    """(ip or None, port) from PRINTER_IP/PRINTER_PORT, falling back to a legacy PRINTER_HOST=ip:port."""
+    host = (env.get('PRINTER_HOST') or '').strip()
+    ip = (env.get('PRINTER_IP') or '').strip() or host.split(':')[0] or None
+    port = (env.get('PRINTER_PORT') or '').strip() or (host.split(':')[1] if ':' in host else '80')
+    return ip, int(port)
+
+
 class BotConfig:
     # Character personas live in content/personas.json (see utils/personas.py)
     PERSONAS = load_personas()
@@ -147,12 +155,12 @@ class BotConfig:
     PLEX_URL = os.getenv('PLEX_URL') or (f"http://{os.getenv('PLEX_IP')}:32400" if os.getenv('PLEX_IP') else None)
     PLEX_TOKEN = os.getenv('PLEX_TOKEN')
 
-    # Doodlab Configuration
-    # Printer Host (IP:Port for Moonraker/Fluidd)
-    # Printer Host (IP:Port for Moonraker/Fluidd)
-    PRINTER_HOST = os.getenv('PRINTER_HOST')
-    # Default webcam snapshot URL (Standard Moonraker/MJPEG-Streamer)
-    PRINTER_WEBCAM_URL = f"http://{PRINTER_HOST}/webcam/?action=snapshot" if PRINTER_HOST else None
+    # 3D printer (Klipper + Moonraker, e.g. Mainsail/FreeDi): just the IP and the web port
+    # (80 through Mainsail/Fluidd, or 7125 for Moonraker directly). Webcams are discovered from Moonraker.
+    # PRINTER_HOST=ip:port is still understood for older .env files.
+    PRINTER_IP, PRINTER_PORT = printer_address(os.environ)
+    # Optional override if webcam discovery picks the wrong camera (stream or snapshot URL both work)
+    PRINTER_WEBCAM_URL = os.getenv('PRINTER_WEBCAM_URL', '').strip() or None
     
     # Server IDs (Comma separated in .env)
     # SERVER_ID=123,456
@@ -168,7 +176,7 @@ class BotConfig:
     # Internal Services to Ping for /doodlab
     # These now pull from .env
     HOMELAB_SERVICES = [
-        {"name": "Qidi Printer", "ip": os.getenv('PRINTER_IP')},
+        {"name": "3D Printer", "ip": PRINTER_IP},
         {"name": "Router", "ip": os.getenv('ROUTER_IP')},
         {"name": "Pi-hole", "ip": os.getenv('PIHOLE_IP')},
         {"name": "Doodlab", "ip": os.getenv('DOODLAB_IP')},

@@ -54,25 +54,18 @@ class HomeLabCommands(commands.Cog):
 
     @tasks.loop(seconds=60)
     async def update_printer_status(self):
-        """Monitor 3D printer status"""
-        if not BotConfig.PRINTER_HOST:
+        """Show print progress in the bot's presence while the printer is busy."""
+        status = await self.homelab.printer.status()
+        if status is None:
             return
-
-        url = f"http://{BotConfig.PRINTER_HOST}/printer/objects/query?print_stats"
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=5) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        state = data.get('result', {}).get('status', {}).get('print_stats', {}).get('state', 'unknown')
-                        
-                        if state == "printing":
-                            status_text = f"Printing at doodlab 🖨️"
-                            await self.bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name=status_text))
-                        else:
-                            await self.bot.change_presence(activity=discord.Game(name="Playing with propane accessories"))
+            if status["state"] == "printing":
+                await self.bot.change_presence(activity=discord.Activity(
+                    type=discord.ActivityType.watching, name=f"a print: {status['progress']}% 🖨️"))
+            else:
+                await self.bot.change_presence(activity=discord.Game(name="Playing with propane accessories"))
         except Exception as e:
-            logger.debug(f"Could not connect to printer: {e}")
+            logger.debug(f"Presence update failed: {e}")
 
     @update_printer_status.before_loop
     async def before_printer_status(self):
@@ -101,61 +94,57 @@ class HomeLabCommands(commands.Cog):
         embed.description = "\n".join(results)
         await interaction.followup.send(embed=embed)
 
-    @app_commands.command(name="printer", description="Check 3D Printer Status")
-    async def printer_status(self, interaction: discord.Interaction):
-        """Check actual 3D printer status"""
+    @app_commands.command(name="printer", description="Check the 3D printer: status, progress, temps and a webcam shot")
+    @app_commands.describe(video="Record a short webcam clip instead of a still")
+    async def printer_status(self, interaction: discord.Interaction, video: bool = False):
+        """Klipper/Moonraker status with a snapshot (or a short clip from the webcam stream)."""
         if not await self.check_auth(interaction):
             return
-
-        if not BotConfig.PRINTER_HOST:
-            await interaction.response.send_message("❌ Printer Host not configured!", ephemeral=True)
+        printer = self.homelab.printer
+        if not printer.configured:
+            await interaction.response.send_message("❌ Printer not configured (PRINTER_IP).", ephemeral=True)
             return
 
         await interaction.response.defer()
-        
-        url = f"http://{BotConfig.PRINTER_HOST}/printer/objects/query?print_stats"
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, timeout=5) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        stats = data.get('result', {}).get('status', {}).get('print_stats', {})
-                        state = stats.get('state', 'Unknown')
-                        filename = stats.get('filename', 'None')
-                        print_duration = stats.get('print_duration', 0)
-                        
-                        # Format duration
-                        hours = int(print_duration // 3600)
-                        minutes = int((print_duration % 3600) // 60)
-                        time_str = f"{hours}h {minutes}m"
-                        
-                        color = 0x2ecc71 if state == "printing" else 0x95a5a6
-                        
-                        embed = discord.Embed(title="🖨️ 3D Printer Status", color=color)
-                        embed.add_field(name="State", value=state.upper(), inline=True)
-                        
-                        if state == "printing":
-                            embed.add_field(name="File", value=filename, inline=True)
-                            embed.add_field(name="Duration", value=time_str, inline=True)
-                        
-                        # Try to get snapshot
-                        files = []
-                        if BotConfig.PRINTER_WEBCAM_URL:
-                            try:
-                                async with session.get(BotConfig.PRINTER_WEBCAM_URL, timeout=2) as img_resp:
-                                    if img_resp.status == 200:
-                                        data = await img_resp.read()
-                                        files.append(discord.File(io.BytesIO(data), filename="snapshot.jpg"))
-                                        embed.set_image(url="attachment://snapshot.jpg")
-                            except Exception as e:
-                                logger.debug(f"Failed to fetch snapshot: {e}")
+        status = await printer.status()
+        if status is None:
+            await interaction.followup.send("⚠️ The printer isn't answering. It may be off, or Moonraker is restarting.")
+            return
 
-                        await interaction.followup.send(embed=embed, files=files)
-                    else:
-                        await interaction.followup.send(f"⚠️ Could not reach printer (Status: {response.status})")
-        except Exception as e:
-            logger.error(f"Printer Check Failed: {e}")
-            await interaction.followup.send(f"❌ Error checking printer: {str(e)}")
+        printing = status["state"] == "printing"
+        color = {"printing": 0x2ecc71, "paused": 0xf1c40f, "error": 0xe74c3c}.get(status["state"], 0x95a5a6)
+        embed = discord.Embed(title="🖨️ 3D Printer Status", color=color)
+        embed.add_field(name="State", value=status["state"].upper(), inline=True)
+        if printing or status["state"] == "paused":
+            embed.add_field(name="File", value=status["filename"] or "?", inline=True)
+            embed.add_field(name="Progress", value=f"{status['progress']}%", inline=True)
+            embed.add_field(name="Elapsed", value=status["duration"], inline=True)
+            if status["remaining"]:
+                embed.add_field(name="Left (approx.)", value=status["remaining"], inline=True)
+            if status["layer"]:
+                embed.add_field(name="Layer", value=f"{status['layer'][0]}/{status['layer'][1]}", inline=True)
+        if status["temps"]:
+            embed.add_field(name="Temps", value="\n".join(
+                f"{name.title()}: {cur}°C" + (f" → {tgt}°C" if tgt else "") for name, (cur, tgt) in status["temps"].items()),
+                inline=False)
+        if status["filament_detected"] is False:
+            embed.add_field(name="⚠️ Filament", value="Sensor reports no filament", inline=False)
+        if status["message"]:
+            embed.set_footer(text=status["message"][:200])
+
+        files = []
+        if video:
+            clip = await printer.clip()
+            if clip:
+                files.append(discord.File(io.BytesIO(clip), filename="printer.mp4"))
+            else:
+                embed.set_footer(text="Couldn't record a clip from the webcam stream.")
+        else:
+            snap = await printer.snapshot()
+            if snap:
+                files.append(discord.File(io.BytesIO(snap), filename="snapshot.jpg"))
+                embed.set_image(url="attachment://snapshot.jpg")
+        await interaction.followup.send(embed=embed, files=files)
 
     @app_commands.command(name="request", description="Search & Request media from Overseerr")
     async def request_media(self, interaction: discord.Interaction, query: str):
