@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from typing import Callable, Dict, List, Optional
 
 import aiohttp
@@ -49,6 +50,11 @@ async def owned_games(key: str, steam_id: str) -> List[Dict]:
     return data["games"]
 
 
+def clean_title(title: str) -> str:
+    """'Rocket League®' -> 'Rocket League' (trademark symbols just get in the way of search)."""
+    return " ".join(re.sub(r"[®™©]", "", title).split())
+
+
 def status_from_playtime(game: Dict) -> str:
     if game.get("playtime_2weeks"):
         return "playing"
@@ -64,6 +70,7 @@ class SteamImporter:
         self.delay = delay
         self.sleep = sleep
         self.cache: Dict[str, Optional[Dict]] = {}
+        self._retried = set()
         if cache_path and os.path.exists(cache_path):
             with open(cache_path, encoding="utf-8") as f:
                 self.cache = json.load(f)
@@ -75,7 +82,9 @@ class SteamImporter:
 
     async def details(self, appid: int) -> Optional[Dict]:
         key = str(appid)
-        if key not in self.cache:
+        # Failed lookups (timeouts, delisted pages) are retried once per run
+        if key not in self.cache or (self.cache[key] is None and key not in self._retried):
+            self._retried.add(key)
             self.cache[key] = await self.store.lookup(f"https://store.steampowered.com/app/{appid}/")
             self._save_cache()
             await self.sleep(self.delay)
@@ -90,7 +99,7 @@ class SteamImporter:
             if not info:
                 counts["no_store_page"] += 1  # delisted, DLC-only, tools, region-locked...
                 continue
-            title = info["title"] or game.get("name", "")
+            title = clean_title(info["title"] or game.get("name", ""))
             if _norm(title) in existing:
                 counts["existing"] += 1
                 continue

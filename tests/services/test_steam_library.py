@@ -46,3 +46,19 @@ async def test_all_flag_and_dry_run(temp_db, tmp_path):
     counts = await imp.run(OWNED, multiplayer_only=False, dry_run=True, progress=lambda line: None)
     assert counts["added"] == 3 and counts["single_player"] == 0
     assert await temp_db.get_game_library(0) == []  # dry run wrote nothing
+
+
+def test_clean_title_and_retry_failed_lookups(temp_db, tmp_path):
+    from services.steam_library import clean_title
+    assert clean_title("Call of Duty®: Black Ops™ ") == "Call of Duty: Black Ops"
+
+
+async def test_failed_lookups_retry_once_per_run(temp_db, tmp_path):
+    imp, store = importer(temp_db, tmp_path)
+    store.lookup = AsyncMock(return_value=None)
+    await imp.details(30)
+    await imp.details(30)
+    assert store.lookup.await_count == 1           # cached for the rest of this run
+    imp2, store2 = importer(temp_db, tmp_path)     # next run retries it
+    await imp2.details(30)
+    store2.lookup.assert_awaited_once()
