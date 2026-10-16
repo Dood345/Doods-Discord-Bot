@@ -38,15 +38,16 @@ class PointsCommands(commands.Cog):
     @app_commands.command(name="leaderboard", description="Top test subjects in this facility")
     @app_commands.guild_only()
     async def leaderboard_command(self, interaction: discord.Interaction):
+        await interaction.response.defer()  # name lookups can hit the API, past Discord's 3 s ack window
         board = await self.points.leaderboard(interaction.guild_id)
         if not board:
-            await interaction.response.send_message(self.bot.dialogue.get(
+            await interaction.followup.send(self.bot.dialogue.get(
                 "cave_johnson", "leaderboard_empty", fallback="Nobody has earned a single Science Point. Disgraceful."))
             return
         rows = [f"{MEDALS[i] if i < 3 else f'`#{i + 1}`'} {await member_name(interaction.guild, uid)}: **{pts}**"
                 for i, (uid, pts) in enumerate(board)]
-        await interaction.response.send_message("🏆 **SCIENCE POINTS LEADERBOARD**\n" + "\n".join(rows),
-                                                allowed_mentions=discord.AllowedMentions.none())
+        await interaction.followup.send("🏆 **SCIENCE POINTS LEADERBOARD**\n" + "\n".join(rows),
+                                        allowed_mentions=discord.AllowedMentions.none())
 
 
 async def setup(bot):

@@ -62,7 +62,8 @@ async def test_profile_rank_and_leaderboard(temp_db):
 
 def interaction(guild, user):
     return SimpleNamespace(guild_id=9, guild=guild, user=user,
-                           response=SimpleNamespace(send_message=AsyncMock()))
+                           response=SimpleNamespace(send_message=AsyncMock(), defer=AsyncMock()),
+                           followup=SimpleNamespace(send=AsyncMock()))
 
 
 async def test_points_commands_never_ping(temp_db):
@@ -76,9 +77,10 @@ async def test_points_commands_never_ping(temp_db):
 
     i = interaction(guild, SimpleNamespace(id=2, display_name="Wheatley"))
     await PointsCommands.leaderboard_command.callback(cog, i)
-    text = i.response.send_message.call_args.args[0]
+    i.response.defer.assert_awaited_once()  # acked before any member lookups
+    text = i.followup.send.call_args.args[0]
     assert text.index("GLaDOS") < text.index("Wheatley") and "<@" not in text
-    assert i.response.send_message.call_args.kwargs["allowed_mentions"].users is False
+    assert i.followup.send.call_args.kwargs["allowed_mentions"].users is False
 
     i = interaction(guild, SimpleNamespace(id=2, display_name="Wheatley"))
     await PointsCommands.points_command.callback(cog, i)

@@ -50,7 +50,7 @@ class ImageCog(commands.Cog):
     # --- Image fun: the model draws, Pillow letters (generated text is unreliable) ---
 
     async def _generate_and_post(self, interaction: discord.Interaction, prompt: str, compose, filename: str, caption: str):
-        await interaction.response.defer()
+        """Caller must have deferred already (Discord needs an ack within 3 s)."""
         blocked = self.images.check_available(interaction.user.id)
         if blocked:
             await interaction.followup.send(self.bot.dialogue.get("system", f"image_{blocked}"), ephemeral=True)
@@ -75,6 +75,7 @@ class ImageCog(commands.Cog):
     @app_commands.describe(member="Who gets a badge (default: you)")
     @app_commands.guild_only()
     async def portrait(self, interaction: discord.Interaction, member: discord.Member = None):
+        await interaction.response.defer()
         member = member or interaction.user
         # Only the display name goes on the badge; nothing about the person goes into the prompt
         archetype = random.choice(PORTRAIT_ARCHETYPES)
@@ -91,6 +92,7 @@ class ImageCog(commands.Cog):
     @app_commands.command(name="poster", description="Commission an Aperture Science propaganda poster")
     @app_commands.describe(topic="What the poster is about")
     async def poster(self, interaction: discord.Interaction, topic: str):
+        await interaction.response.defer()  # before the slogan: a model call can exceed Discord's 3 s ack window
         topic = " ".join(topic.split())[:150]
         prompt = (f"vintage 1950s propaganda poster for Aperture Science about {topic}, bold flat colors, "
                   "retro illustration, dramatic heroic composition, no text")

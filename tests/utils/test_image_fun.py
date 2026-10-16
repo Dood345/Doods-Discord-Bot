@@ -59,7 +59,12 @@ async def test_portrait_prompt_has_no_personal_info():
 async def test_poster_slogan_and_refusal():
     c, images = cog(ImageResult("ok", image=png()))
     i, _ = interaction()
+    order = []
+    i.response.defer = AsyncMock(side_effect=lambda *a, **k: order.append("defer"))
+    slogan = c.bot.ai_handler.complete
+    c.bot.ai_handler.complete = AsyncMock(side_effect=lambda p: order.append("complete") or slogan.return_value)
     await ImageCog.poster.callback(c, i, "mandatory fun")
+    assert order == ["defer", "complete"]  # ack Discord before the slow model call
     assert "Testing Is Mandatory" in i.channel.send.call_args.args[0]
 
     c, images = cog(ImageResult("refused"))
