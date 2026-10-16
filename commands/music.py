@@ -7,6 +7,8 @@ import logging
 import os
 import edge_tts
 import re
+import shutil
+import tempfile
 import time
 from urllib.parse import urlparse
 from config import BotConfig
@@ -62,6 +64,35 @@ FFMPEG_OPTIONS = {
     'options': '-vn'
 }
 
+# HLS streams (most SoundCloud tracks now) make ffmpeg fetch each segment only when it needs it: playback
+# stalls at every segment boundary and discord.py then rushes to catch up, so the music audibly slows
+# down and speeds up. Those tracks are downloaded first (a few seconds for a song) and played from disk.
+BUFFER_DIR = os.path.join(tempfile.gettempdir(), "doodlab_music")
+BUFFER_MAX_SECONDS = 3 * 60 * 60   # longer than this (marathon mixes): stream instead of downloading
+
+
+def needs_buffering(info: dict) -> bool:
+    return str(info.get('protocol') or '').startswith('m3u8') and (info.get('duration') or 0) <= BUFFER_MAX_SECONDS
+
+
+def buffer_to_disk(url: str, info: dict) -> str:
+    """Download the already-chosen format of `url` into BUFFER_DIR (blocking; run in an executor)."""
+    os.makedirs(BUFFER_DIR, exist_ok=True)
+    opts = dict(YDL_OPTIONS, format=info['format_id'], noplaylist=True, extract_flat=False,
+                outtmpl=os.path.join(BUFFER_DIR, '%(extractor)s-%(id)s.%(ext)s'))
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        result = ydl.extract_info(info.get('webpage_url') or url, download=True)
+        downloads = result.get('requested_downloads') or []
+        return downloads[0]['filepath'] if downloads else ydl.prepare_filename(result)
+
+
+def discard_buffer(path: str | None) -> None:
+    if path and path.startswith(BUFFER_DIR):
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
 class GuildPlayer:
     def __init__(self, channel_id: int):
         self.channel_id: int = channel_id
@@ -85,6 +116,8 @@ class MusicCommands(commands.Cog):
         """Check for FFmpeg availability on load"""
         if self.sessions:
             self.save_sessions.start()
+        # Leftover buffered tracks from before a restart
+        shutil.rmtree(BUFFER_DIR, ignore_errors=True)
         try:
             process = await asyncio.create_subprocess_exec(
                 'ffmpeg', '-version',
@@ -297,6 +330,7 @@ class MusicCommands(commands.Cog):
         try:
             # 1. Get Stream URL (JIT)
             extra_before = ""
+            local_file = None
             if url.startswith(PLEX_PREFIX):
                 # Library track: stream straight from Plex (token sent as a header)
                 stream_url, extra_before = self.bot.music_library.stream_source(url)
@@ -308,6 +342,9 @@ class MusicCommands(commands.Cog):
                     data = data['entries'][0]
 
                 stream_url = data['url']
+                if needs_buffering(data):
+                    stream_url = await loop.run_in_executor(None, lambda: buffer_to_disk(url, data))
+                    local_file = stream_url
             
             # 2. Update Facility Status
             vc_channel = voice_client.channel
@@ -323,6 +360,7 @@ class MusicCommands(commands.Cog):
             
             def after_song_ends(error: Exception | None) -> None:
                 if error: logger.error(f"Song Error: {error}")
+                discard_buffer(local_file)
                 asyncio.run_coroutine_threadsafe(self.play_next(guild), self.bot.loop)
 
             def play_song(error: Exception | None = None) -> None:
@@ -330,6 +368,8 @@ class MusicCommands(commands.Cog):
                 
                 # Dynamic FFMPEG Options for Seeking
                 current_opts = FFMPEG_OPTIONS.copy()
+                if local_file:
+                    current_opts['before_options'] = ''  # reconnect flags only apply to network input
                 if extra_before:
                     current_opts['before_options'] = f"{current_opts['before_options']} {extra_before}"
                 if seek_time:
