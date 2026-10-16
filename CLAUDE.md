@@ -20,7 +20,7 @@ python -m uv run python utils/verify_db.py          # inspect DB contents
 
 AI tests mock `AIHandler._chat` (agent path) or `AIHandler._generate` (one-shot prompts); never hit a real model in tests. With `OLLAMA_URL` unset the handler starts disabled (`client is None`), so tests set `handler.client = True`.
 
-Slash commands are **not** auto-synced on startup. After adding/changing an `app_commands` command, the owner runs the prefix command `!sync .` (instant, current guild), `!sync` (global, ~1h), or `!sync clear` in Discord. The `sync` command is defined inside `main.py`'s `__main__` block.
+Slash commands are **not** auto-synced on startup. After adding/changing an `app_commands` command, the owner runs the prefix command `!sync .` (instant, current guild: copies the global commands into it), `!sync` (global, usually minutes), or `!sync clear` (removes the guild copies, e.g. if commands show twice after both) in Discord. The `sync` command is defined inside `main.py`'s `__main__` block.
 
 ## Architecture
 

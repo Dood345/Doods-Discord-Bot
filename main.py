@@ -203,9 +203,12 @@ if __name__ == "__main__":
     @commands.is_owner()
     async def sync(ctx, spec: str = None):
         if spec == ".":
-            # Instant sync to current server
+            # Instant sync to current server. Every command is global, so the server's own list is
+            # empty until the global commands are copied into it.
+            ctx.bot.tree.copy_global_to(guild=ctx.guild)
             synced = await ctx.bot.tree.sync(guild=ctx.guild)
-            await ctx.send(f"⚡ Synced {len(synced)} commands to **this server** instantly.")
+            await ctx.send(f"⚡ Synced {len(synced)} commands to **this server** instantly. "
+                           "(If commands also show up twice after a global `!sync`, run `!sync clear` here.)")
         elif spec == "clear":
             # Nuke commands (if you made a mess)
             ctx.bot.tree.clear_commands(guild=ctx.guild)
