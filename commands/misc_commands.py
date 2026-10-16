@@ -57,7 +57,10 @@ class MiscCommands(commands.Cog):
             name=f"Notes ({len(facts)}/{self.bot.db.MAX_USER_FACTS})",
             value="\n".join(f"• {f}" for f in facts)[:1024] if facts else "Nothing yet. Tell Cave something worth remembering.",
             inline=False)
-        embed.add_field(name="Chat history", value=f"{len(history)} stored messages (Cave reads the last 20)", inline=False)
+        summary, _ = await self.bot.db.get_ai_summary(interaction.user.id)
+        if summary:
+            embed.add_field(name="Cave's summary of your older chats", value=summary[:1024], inline=False)
+        embed.add_field(name="Chat history", value=f"{len(history)} stored messages (Cave reads the last 10 plus the summary)", inline=False)
         embed.set_footer(text="/clearhistory wipes both.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 

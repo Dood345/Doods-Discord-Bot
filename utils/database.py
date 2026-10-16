@@ -31,6 +31,13 @@ class DatabaseHandler:
                              content TEXT, 
                              timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
 
+                # Rolling summary of each user's older chat (everything up to last_id)
+                await conn.execute('''CREATE TABLE IF NOT EXISTS ai_summaries
+                            (user_id INTEGER PRIMARY KEY,
+                             summary TEXT,
+                             last_id INTEGER,
+                             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+
                 # Long-term facts a user asked Cave to remember (global per user, like ai_history)
                 await conn.execute('''CREATE TABLE IF NOT EXISTS user_facts
                             (id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -306,9 +313,45 @@ class DatabaseHandler:
         try:
             async with self.get_connection() as conn:
                 await conn.execute("DELETE FROM ai_history WHERE user_id = ?", (user_id,))
+                await conn.execute("DELETE FROM ai_summaries WHERE user_id = ?", (user_id,))
                 await conn.commit()
         except Exception as e:
             logger.error(f"Failed to clear AI history: {e}")
+
+    # --- Rolling chat summaries ---
+    async def get_ai_summary(self, user_id: int) -> Tuple[Optional[str], int]:
+        """(summary, last summarized ai_history id); (None, 0) if none yet."""
+        try:
+            async with self.get_connection() as conn:
+                async with conn.execute("SELECT summary, last_id FROM ai_summaries WHERE user_id = ?", (user_id,)) as cursor:
+                    row = await cursor.fetchone()
+            return (row[0], row[1]) if row else (None, 0)
+        except Exception as e:
+            logger.error(f"Failed to get AI summary: {e}")
+            return None, 0
+
+    async def get_unsummarized_history(self, user_id: int, after_id: int, keep_recent: int) -> List[Tuple[int, str, str]]:
+        """(id, role, content) rows newer than after_id, excluding the newest keep_recent rows."""
+        try:
+            async with self.get_connection() as conn:
+                async with conn.execute(
+                    "SELECT id, role, content FROM ai_history WHERE user_id = ? AND id > ? ORDER BY id DESC LIMIT -1 OFFSET ?",
+                    (user_id, after_id, keep_recent)) as cursor:
+                    rows = await cursor.fetchall()
+            return list(reversed(rows))
+        except Exception as e:
+            logger.error(f"Failed to get unsummarized history: {e}")
+            return []
+
+    async def set_ai_summary(self, user_id: int, summary: str, last_id: int):
+        try:
+            async with self.get_connection() as conn:
+                await conn.execute(
+                    "INSERT OR REPLACE INTO ai_summaries (user_id, summary, last_id, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                    (user_id, summary, last_id))
+                await conn.commit()
+        except Exception as e:
+            logger.error(f"Failed to save AI summary: {e}")
 
     # --- Long-term user facts ---
     MAX_USER_FACTS = 20

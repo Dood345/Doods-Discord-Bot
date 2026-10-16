@@ -5,7 +5,18 @@ import asyncio
 from unittest.mock import MagicMock
 
 from utils.database import DatabaseHandler
+from utils.ai_handler import AIHandler
 from config import BotConfig
+
+
+@pytest.fixture(autouse=True)
+def no_background_summaries(request, monkeypatch):
+    """get_chat_response schedules a summary job that would outlive the test's event loop.
+    Disabled by default; tests that exercise it call AIHandler._summarize_history directly."""
+    if "real_summaries" not in request.keywords:
+        async def skip(self, user_id):
+            return None
+        monkeypatch.setattr(AIHandler, "_summarize_history", skip)
 
 # -----------------------------------------------------------------------------
 # Pytest Asyncio Configuration

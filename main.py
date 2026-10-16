@@ -18,6 +18,7 @@ from utils.ai_handler import AIHandler
 from utils.reaction_handler import ReactionHandler
 from utils.database import DatabaseHandler
 from utils.dialogue_manager import DialogueManager
+from utils.streaming import ReplyStreamer
 from commands.character_commands import CharacterCommands
 from commands.social_commands import SocialCommands
 from commands.game_commands import GameCommands
@@ -135,14 +136,13 @@ class DoodsBot(commands.Bot):
                             pass
                     # ---------------------------------
 
+                    streamer = ReplyStreamer(message)
                     response = await self.ai_handler.get_chat_response(
                         message.author.id, content, guild_id, reply_context=reply_context,
-                        user=message.author, guild=message.guild, channel=message.channel
+                        user=message.author, guild=message.guild, channel=message.channel,
+                        on_text=streamer.update
                     )
-                    if response:
-                        await message.reply(response)
-                    else:
-                        await message.reply("🤖 *confused processing noises* (AI error)")
+                    await streamer.finish(response or "🤖 *confused processing noises* (AI error)")
             else:
                 await message.reply("🤖 AI features are currently disabled (Missing API Key).")
         

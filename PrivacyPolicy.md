@@ -9,6 +9,7 @@ We collect information that you provide to us through your use of the bot, such 
 Specifically:
 - AI chat memory: when you mention the bot or use its AI commands, your message and the bot's reply are stored with your Discord user ID. This memory is shared across every server the bot is in, so the bot remembers you everywhere. If you reply to another person's message while mentioning the bot, that message's author name and text are included in the AI request.
 - Roasts and compliments: when someone uses the roast or compliment commands on you, your display name and your recent AI chat messages with the bot are used to personalize the response.
+- Conversation summary: older AI chat messages are condensed into a short private summary linked to your user ID so the bot keeps context over time. /memory shows it and /clearhistory deletes it.
 - Remembered notes: if you ask the bot to remember something about you (or tell it a preference), it may save a short note (up to 20) linked to your user ID and use it in future chats. Use /memory to see your notes; /clearhistory deletes them along with your chat memory.
 - Server data: game library entries, ratings, tags and gift wishlists you add are stored with your user ID and the server ID.
 - Logs: operational logs (which may include usernames and command usage) are kept in rotating files limited to about 30 MB in total, after which the oldest entries are overwritten.
