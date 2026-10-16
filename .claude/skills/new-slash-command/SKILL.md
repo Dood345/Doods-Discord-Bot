@@ -9,7 +9,7 @@ Follow these steps in order. Read CLAUDE.md first if you haven't.
 
 ## 1. Decide where it lives
 - Fits an existing cog in `commands/`? Add it there.
-- New feature area? Create `commands/<area>_commands.py` with a `commands.Cog` subclass. Then **import it and `await self.add_cog(...)` in `DoodsBot.setup_hook()` in `main.py`**. Forgetting this is the #1 way a command silently doesn't exist.
+- New feature area? Create `commands/<area>_commands.py` with a `commands.Cog` subclass. End it with `async def setup(bot): await bot.add_cog(<Cog>(bot))` and **add `"commands.<area>_commands"` to `EXTENSIONS` in `utils/hot_reload.py`** (setup_hook loads that list; a test fails if a module is missing). Undo in `cog_unload` whatever `cog_load` starts, so `!reload` works. Forgetting this is the #1 way a command silently doesn't exist.
 
 ## 2. Put logic in a service, not the cog
 Anything touching the DB or with real rules goes in `services/<area>_service.py` (constructor takes `db` and, if it returns user-facing text, `dialogue`). Instantiate it in `DoodsBot.__init__` as `self.<area>_service` and read it in the cog via `bot.<area>_service`. New tables go in `DatabaseHandler.setup_tables()`. Changing an existing table needs a migration (`db-migration` skill): `CREATE TABLE IF NOT EXISTS` won't touch the server's existing tables.
