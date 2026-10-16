@@ -216,7 +216,8 @@ UPDATED SUMMARY:"""
             {location_data}
 
             TOOLS: You have tools that read live facility data and take actions. ALWAYS call the matching tool:
-            - asks you to play/queue/put on a song, or shares a YouTube link -> queue_song
+            - asks you to play/queue/put on a song or an artist, or shares a YouTube link -> queue_song
+            - asks for a radio/station/"more like this" -> queue_song with radio=true
             - asks what song is on -> now_playing
             - asks what GAME to play, or about the game library -> recommend_games / list_game_tags
             - asks to add a game -> add_game

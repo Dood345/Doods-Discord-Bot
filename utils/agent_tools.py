@@ -128,16 +128,22 @@ async def _request_media(ctx: ToolContext, tmdb_id: int, media_type: str) -> str
         action, check=check, confirm_label="Request")
 
 
-async def _queue_song(ctx: ToolContext, query: str) -> str:
+async def _queue_song(ctx: ToolContext, query: str, radio: bool = False) -> str:
     music = ctx.bot.get_cog("MusicCommands")
     if music is None:
         return "The music system is offline."
     if not isinstance(ctx.user, discord.Member) or not ctx.user.voice or not ctx.user.voice.channel:
         return "ERROR: the user must join a voice channel first."
-    track = await music.resolve_track(str(query)[:200])
-    if isinstance(track, str):
-        return f"ERROR: {track}"
-    url, title, uploader = track
+    planned = await music.resolve_request(str(query)[:200], radio=bool(radio))
+    if isinstance(planned, str):
+        return f"ERROR: {planned}"
+    tracks, description = planned
+    url = tracks[0][0]
+    preview = ""
+    if len(tracks) > 1:
+        preview = "\n" + "\n".join(f"• {t[1]} — {t[2]}" for t in tracks[:4])
+        if len(tracks) > 4:
+            preview += f"\n• …and {len(tracks) - 4} more"
 
     async def check(interaction):
         member = interaction.guild.get_member(interaction.user.id) if interaction.guild else None
@@ -147,11 +153,11 @@ async def _queue_song(ctx: ToolContext, query: str) -> str:
 
     async def action(interaction):
         member = interaction.guild.get_member(interaction.user.id)
-        return await music.enqueue_track(member, interaction.channel, track)
+        return await music.enqueue_tracks(member, interaction.channel, tracks)
 
     return await post_confirmation(
-        ctx, f"queue_song:{url}",
-        f"🎵 {ctx.user.display_name}, queue **{title}** by {uploader}? ({music.track_source(url)})",
+        ctx, f"queue_song:{url}:{len(tracks)}",
+        f"🎵 {ctx.user.display_name}, queue {description}? ({music.track_source(url)}){preview}",
         action, check=check, confirm_label="Queue it")
 
 
@@ -250,11 +256,13 @@ def build_cave_tools() -> ToolRegistry:
         ),
         Tool(
             name="queue_song",
-            description="Queue one song in the user's voice channel from a search term or YouTube link "
-                        "(the user confirms with a button). Not for playlists.",
+            description="Play music in the user's voice channel (the user confirms with a button). "
+                        "A song or YouTube link queues that song; just an artist's name queues a mix of their songs; "
+                        "radio=true starts a radio station of similar music.",
             handler=_queue_song,
             parameters={"type": "object", "properties": {
-                "query": {"type": "string", "description": "Song search, e.g. 'Still Alive Jonathan Coulton'"},
+                "query": {"type": "string", "description": "Song, artist, or YouTube link, e.g. 'Still Alive Jonathan Coulton' or '311'"},
+                "radio": {"type": "boolean", "description": "true if they ask for a radio/station/similar music"},
             }, "required": ["query"]},
             requires_guild=True,
             timeout=45,  # yt-dlp lookups can be slow

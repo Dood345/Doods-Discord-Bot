@@ -102,3 +102,54 @@ async def test_exact_artist_request_beats_featured_track():
         "/library/metadata/5/allLeaves": {"Metadata": [plex_track("Bandz a Make Her Dance", "Juicy J", "/p/own")]},
     })
     assert (await lib.find("play some Juicy J"))[0] == PLEX_PREFIX + "/p/own"
+
+
+def artist_library(own_count, similar=None):
+    responses = {
+        "/hubs/search": {"Hub": [{"type": "artist", "Metadata": [{"title": "311", "ratingKey": "1"}]},
+                                 {"type": "track", "Metadata": [
+                                     dict(plex_track("Amber", "311", "/p/amber"), grandparentRatingKey="1")]}]},
+        "/library/metadata/1/allLeaves": {"Metadata": [plex_track(f"Song {i}", "311", f"/p/{i}") for i in range(own_count)]},
+        "/library/metadata/1/similar": {"Metadata": [{"title": n, "ratingKey": n} for n in (similar or [])]},
+    }
+    for n in similar or []:
+        responses[f"/library/metadata/{n}/allLeaves"] = {"Metadata": [plex_track(f"{n} hit {i}", n, f"/p/{n}{i}") for i in range(5)]}
+    return library_with(responses)
+
+
+async def test_artist_request_becomes_shuffled_mix():
+    tracks, description = await artist_library(17).plan("play some 311")
+    assert len(tracks) == 10 and len({t[0] for t in tracks}) == 10
+    assert all(t[2] == "311" for t in tracks) and "10-track **311** mix" in description
+
+
+async def test_small_artist_or_radio_request_mixes_in_similar_artists():
+    tracks, description = await artist_library(1, similar=["Sublime", "Incubus"]).plan("311")
+    assert "radio" in description and tracks[0][2] == "311"
+    assert {t[2] for t in tracks} >= {"Sublime", "Incubus"}
+
+    tracks, _ = await artist_library(17, similar=["Sublime"]).plan("311 radio", radio=True)
+    assert 1 < sum(t[2] == "311" for t in tracks) <= 5 and any(t[2] == "Sublime" for t in tracks)
+
+
+async def test_song_radio_starts_with_that_song():
+    tracks, description = await artist_library(17, similar=["Sublime"]).plan("amber 311", radio=True)
+    assert tracks[0][0] == PLEX_PREFIX + "/p/amber" and "starting with **Amber**" in description
+    assert PLEX_PREFIX + "/p/amber" not in [t[0] for t in tracks[1:]]
+    tracks, _ = await artist_library(17).plan("amber 311")
+    assert [t[1] for t in tracks] == ["Amber"]
+
+
+async def test_enqueue_tracks_queues_all_and_starts_playing():
+    from types import SimpleNamespace
+    music = MusicCommands(MagicMock(music_library=None))
+    music.play_next = AsyncMock()
+    vc = MagicMock(channel=SimpleNamespace(id=7, name="Lounge"))
+    vc.is_playing.return_value = vc.is_paused.return_value = False
+    channel = SimpleNamespace(id=7, name="Lounge")
+    member = SimpleNamespace(voice=SimpleNamespace(channel=channel), guild=SimpleNamespace(voice_client=vc))
+    tracks = [("u1", "A", "x"), ("u2", "B", "x"), ("u3", "C", "x")]
+
+    msg = await music.enqueue_tracks(member, None, tracks)
+    assert music.players[7].queue == tracks and "+2 more" in msg
+    music.play_next.assert_awaited_once()

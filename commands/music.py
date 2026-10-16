@@ -331,7 +331,7 @@ class MusicCommands(commands.Cog):
 
     # --- Chat (AI tool) entry points: one track at a time, no interaction object ---
 
-    async def resolve_track(self, query: str) -> tuple[str, str, str] | str:
+    async def resolve_track(self, query: str, skip_library: bool = False) -> tuple[str, str, str] | str:
         """Find a single track. Returns (url, title, uploader) or an error string.
 
         YouTube links play from YouTube. Anything else is a song request, tried in order:
@@ -345,7 +345,7 @@ class MusicCommands(commands.Cog):
                 return "Only YouTube links or search terms are allowed."
             target = query
         else:
-            library = getattr(self.bot, "music_library", None)
+            library = None if skip_library else getattr(self.bot, "music_library", None)
             if library is not None and library.available:
                 track = await library.find(query)
                 if track:
@@ -402,8 +402,28 @@ class MusicCommands(commands.Cog):
             return "☁️ SoundCloud"
         return "▶️ YouTube"
 
+    async def resolve_request(self, query: str, radio: bool = False) -> tuple[list[tuple[str, str, str]], str] | str:
+        """What a chat song request should queue: ([tracks], description) or an error string.
+
+        Library requests can become an artist mix or a radio station; everything else is one track.
+        """
+        query = query.strip()
+        if not query.startswith(('http://', 'https://')):
+            library = getattr(self.bot, "music_library", None)
+            if library is not None and library.available:
+                planned = await library.plan(query, radio=radio)
+                if planned:
+                    return planned
+        track = await self.resolve_track(query, skip_library=True)
+        if isinstance(track, str):
+            return track
+        return [track], f"**{track[1]}** by {track[2]}"
+
     async def enqueue_track(self, member: discord.Member, text_channel, track: tuple[str, str, str]) -> str:
-        """Queue a resolved track in the member's voice channel; joins voice if needed."""
+        return await self.enqueue_tracks(member, text_channel, [track])
+
+    async def enqueue_tracks(self, member: discord.Member, text_channel, tracks: list[tuple[str, str, str]]) -> str:
+        """Queue resolved tracks in the member's voice channel; joins voice if needed."""
         if not member.voice or not member.voice.channel:
             return "🎙️ You need to be in a voice channel for me to pipe audio at you."
         guild = member.guild
@@ -421,12 +441,16 @@ class MusicCommands(commands.Cog):
         player = self.players.setdefault(target.id, GuildPlayer(target.id))
         if isinstance(text_channel, discord.TextChannel):
             player.notification_channel = text_channel
-        player.queue.append(track)
+        first = tracks[0]
+        player.queue.extend(tracks)
+        more = f" (+{len(tracks) - 1} more queued)" if len(tracks) > 1 else ""
 
         if not vc.is_playing() and not vc.is_paused():
             await self.play_next(guild)
-            return f"🎵 Now playing **{track[1]}** by {track[2]}."
-        return f"🎵 Queued **{track[1]}** by {track[2]} (#{len(player.queue)} in line)."
+            return f"🎵 Now playing **{first[1]}** by {first[2]}{more}."
+        if len(tracks) > 1:
+            return f"🎵 Queued {len(tracks)} tracks, starting with **{first[1]}** by {first[2]}."
+        return f"🎵 Queued **{first[1]}** by {first[2]} (#{len(player.queue)} in line)."
 
     @app_commands.command(name="play-tts", description="Toggle the vocal announcement system")
     async def toggle_tts(self, interaction: discord.Interaction) -> None:

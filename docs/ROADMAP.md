@@ -71,7 +71,7 @@ Deliverable also includes the `add-ai-tool` skill (written once the registry's r
 
 ## Phase 2 — More fun
 
-- **Library-first music.** ✅ Cave's song requests try Plex → SoundCloud → YouTube search; YouTube links still go to YouTube.
+- **Library-first music.** ✅ Cave's song requests try Plex → SoundCloud → YouTube search; YouTube links still go to YouTube. Artist requests queue a mix; "radio" requests mix in similar artists from the library (#90).
 
 - **One character command, data-driven personas.** Replace nine near-identical `/hank`, `/dale`, … commands with `/ask character:<autocomplete> prompt:` backed by a persona file (prompt, emoji, fallback lines, reactions). Adding a character = editing data. Keep old commands as aliases for a release.
 - **Character showdowns.** `/debate hank cartman topic:` — two personas argue for 3 rounds, server votes with a native Discord poll.
