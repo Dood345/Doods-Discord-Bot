@@ -128,7 +128,14 @@ class MusicCommands(commands.Cog):
         if self.bot.is_closed():
             return
         try:
-            await self.sessions.save_all(self._active_sessions())
+            snaps = self._active_sessions()
+            await self.sessions.save_all(snaps)
+            summary = (len(snaps), len(self.players), len(self.bot.voice_clients))
+            if summary != getattr(self, "_last_save_summary", None):
+                self._last_save_summary = summary
+                logger.info(f"Music sessions saved: {summary[0]} (players: {summary[1]}, "
+                            f"voice connections: {summary[2]}, playing: "
+                            f"{[bool(p.current_track) for p in self.players.values()]})")
         except Exception as e:
             logger.warning(f"Saving music sessions failed: {e}")
 
