@@ -1,5 +1,6 @@
 """utils/hot_reload.py against a real (not logged-in) commands.Bot and throwaway extension modules."""
 
+import importlib
 import sys
 import textwrap
 from pathlib import Path
@@ -41,6 +42,8 @@ def ext_dir(tmp_path, monkeypatch):
     pkg.mkdir()
     (pkg / "__init__.py").write_text("")
     monkeypatch.syspath_prepend(str(tmp_path))
+    # Rewritten modules keep the same size within the same second: a cached .pyc would hide the change
+    monkeypatch.setattr(sys, "dont_write_bytecode", True)
     events = __import__("builtins").__dict__.setdefault("_hot_reload_events", [])
     events.clear()
     yield pkg
@@ -51,6 +54,7 @@ def ext_dir(tmp_path, monkeypatch):
 def write_cog(pkg: Path, module: str, cls: str, version: int, body: str = "pass"):
     (pkg / f"{module}.py").write_text(textwrap.dedent(COG_SOURCE.format(cls=cls, version=version, body=body)))
     sys.modules.pop(f"hr_exts.{module}", None)
+    importlib.invalidate_caches()
 
 
 @pytest.fixture
