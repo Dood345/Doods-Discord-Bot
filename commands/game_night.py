@@ -110,7 +110,11 @@ class GameNight(commands.Cog):
             channel = guild.get_channel(night.voice_channel_id)
             humans = [m.id for m in getattr(channel, "members", []) if not m.bot]
             for user_id in await self.service.record_presence(night.id, humans):
-                await points.award(night.guild_id, user_id, ATTEND_POINTS, "gamenight", f"gamenight:{night.id}:{user_id}")
+                try:
+                    await points.award(night.guild_id, user_id, ATTEND_POINTS, "gamenight",
+                                       self.service.award_key(night, user_id))
+                except Exception as e:  # retried on the next check (the award key makes repeats a no-op)
+                    logger.warning(f"Game night award failed for night {night.id}: {e}")
 
     async def _close(self, night, guild) -> None:
         attended = await self.service.close_night(night.id)

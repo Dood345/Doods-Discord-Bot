@@ -94,8 +94,8 @@ async def test_attendance_window_and_counting(temp_db):
     assert len(await service.open_nights(now=START.timestamp() - 10 * 60)) == 1   # 15 min early counts
     for _ in range(ATTEND_CHECKS - 1):
         assert await service.record_presence(night_id, [1, 2]) == []
-    assert await service.record_presence(night_id, [1]) == [1]                    # qualifies exactly once
-    assert await service.record_presence(night_id, [1]) == []
+    assert await service.record_presence(night_id, [1]) == [1]                    # qualified...
+    assert await service.record_presence(night_id, [1]) == [1]                    # ...and stays so (award retries)
     assert await service.close_night(night_id) == [1]                             # 2 left early
     assert await service.open_nights(now=START.timestamp()) == []
 
@@ -137,3 +137,29 @@ async def test_no_attendance_points_while_science_points_is_off(temp_db):
     await cog.check_attendance(now=START.timestamp() + 5 * 3600)
     assert (await points.profile(99, 1))[0] == 0
     text.send.assert_not_awaited()
+
+
+async def test_rerunning_gamenight_doesnt_pay_twice(temp_db):
+    points = PointsService(temp_db, achievements=[], tz=TZ)
+    await points.set_enabled(99, True)
+    cog, _ = attendance_cog(temp_db, points, humans=[1])
+    first = await cog.service.record_night(99, 5, 77, START)
+    assert await cog.service.record_night(99, 5, 77, START.replace(minute=30)) == first   # overlapping: same night
+    await cog.service.record_night(99, 6, 77, START)                                     # another channel, same day
+    for i in range(ATTEND_CHECKS + 1):
+        await cog.check_attendance(now=START.timestamp() + i * 120)
+    assert (await points.profile(99, 1))[0] == ATTEND_POINTS
+
+
+async def test_failed_award_is_retried(temp_db):
+    points = PointsService(temp_db, achievements=[], tz=TZ)
+    await points.set_enabled(99, True)
+    real_award = points.award
+    points.award = AsyncMock(side_effect=Exception("database is locked"))
+    cog, _ = attendance_cog(temp_db, points, humans=[1])
+    await cog.service.record_night(99, 5, 77, START)
+    for i in range(ATTEND_CHECKS):
+        await cog.check_attendance(now=START.timestamp() + i * 120)
+    points.award = real_award
+    await cog.check_attendance(now=START.timestamp() + ATTEND_CHECKS * 120)
+    assert (await points.profile(99, 1))[0] == ATTEND_POINTS

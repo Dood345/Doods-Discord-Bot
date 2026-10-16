@@ -82,11 +82,18 @@ class GameNightService:
     async def record_night(self, guild_id: int, voice_channel_id: int, text_channel_id: Optional[int],
                            starts_at: datetime) -> int:
         start = starts_at.timestamp() - EARLY_JOIN.total_seconds()
+        end = starts_at.timestamp() + ATTEND_WINDOW.total_seconds()
         async with self.db.get_connection() as conn:
+            # Running /gamenight again for an overlapping time in the same channel is the same night
+            async with conn.execute("SELECT id FROM game_nights WHERE guild_id = ? AND voice_channel_id = ? AND closed = 0 "
+                                    "AND starts_at < ? AND ends_at > ?", (guild_id, voice_channel_id, end, start)) as cur:
+                existing = await cur.fetchone()
+            if existing:
+                return existing[0]
             cur = await conn.execute(
                 "INSERT INTO game_nights (guild_id, voice_channel_id, text_channel_id, starts_at, ends_at) "
                 "VALUES (?, ?, ?, ?, ?)",
-                (guild_id, voice_channel_id, text_channel_id, start, starts_at.timestamp() + ATTEND_WINDOW.total_seconds()))
+                (guild_id, voice_channel_id, text_channel_id, start, end))
             await conn.commit()
             return cur.lastrowid
 
@@ -99,7 +106,10 @@ class GameNightService:
                 return [GameNightRecord(*row) for row in await cur.fetchall()]
 
     async def record_presence(self, night_id: int, user_ids: List[int]) -> List[int]:
-        """Count one sighting for each user; returns users who just reached ATTEND_CHECKS."""
+        """Count one sighting for each user; returns everyone present who has reached ATTEND_CHECKS.
+
+        Qualified users come back on every later check too, so a failed award is retried; the award key
+        makes paying them again a no-op."""
         qualified = []
         async with self.db.get_connection() as conn:
             for uid in user_ids:
@@ -108,10 +118,15 @@ class GameNightService:
                     "ON CONFLICT(night_id, user_id) DO UPDATE SET checks = checks + 1", (night_id, uid))
                 async with conn.execute("SELECT checks FROM game_night_attendance WHERE night_id = ? AND user_id = ?",
                                         (night_id, uid)) as cur:
-                    if (await cur.fetchone())[0] == ATTEND_CHECKS:
+                    if (await cur.fetchone())[0] >= ATTEND_CHECKS:
                         qualified.append(uid)
             await conn.commit()
         return qualified
+
+    def award_key(self, night: GameNightRecord, user_id: int) -> str:
+        """One attendance payout per user per server per local day, however many nights get scheduled."""
+        day = datetime.fromtimestamp(night.starts_at + EARLY_JOIN.total_seconds(), self.tz).date().isoformat()
+        return f"gamenight:{night.guild_id}:{day}:{user_id}"
 
     async def close_night(self, night_id: int) -> List[int]:
         """Mark the night done; returns everyone who qualified (for the summary)."""
