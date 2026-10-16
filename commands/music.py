@@ -1,6 +1,6 @@
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 import yt_dlp
 import asyncio
 import logging
@@ -11,6 +11,7 @@ import time
 from urllib.parse import urlparse
 from config import BotConfig
 from services.music_library import PLEX_PREFIX, MATCH_THRESHOLD, match_score
+from services.music_sessions import REWIND, MusicSessionStore, fmt_time, snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -78,9 +79,12 @@ class MusicCommands(commands.Cog):
         self.players: dict[int, GuildPlayer] = {} # {channel_id: GuildPlayer}
         self.volume: float = BotConfig.MUSIC_DEFAULT_VOLUME 
         self.tts_settings: dict[int, bool] = {} # {guild_id: bool} (TTS preference per server)
+        self.sessions = MusicSessionStore(bot.db) if getattr(bot, "db", None) else None
         
     async def cog_load(self):
         """Check for FFmpeg availability on load"""
+        if self.sessions:
+            self.save_sessions.start()
         try:
             process = await asyncio.create_subprocess_exec(
                 'ffmpeg', '-version',
@@ -95,6 +99,8 @@ class MusicCommands(commands.Cog):
 
     def cog_unload(self) -> None:
         """Cleanup when cog is unloaded (or bot shuts down)"""
+        # Stop saving first, so the last snapshot (what was playing) survives the shutdown
+        self.save_sessions.cancel()
         self.players.clear()
         
         # Disconnect from all voice channels
@@ -103,6 +109,74 @@ class MusicCommands(commands.Cog):
                 self.bot.loop.create_task(vc.disconnect(force=True))
             except Exception as e:
                 logger.error(f"Failed to disconnect cleanly: {e}")
+
+    # --- Resume after a restart -------------------------------------------------
+
+    def _active_sessions(self) -> list:
+        """Snapshots of players that are actually connected and have something on."""
+        by_channel = {vc.channel.id: vc.guild for vc in self.bot.voice_clients if getattr(vc, "channel", None)}
+        snaps = []
+        for channel_id, player in self.players.items():
+            guild = by_channel.get(channel_id)
+            snap = snapshot(player, guild.id) if guild else None
+            if snap:
+                snaps.append(snap)
+        return snaps
+
+    @tasks.loop(seconds=10)
+    async def save_sessions(self):
+        if self.bot.is_closed():
+            return
+        try:
+            await self.sessions.save_all(self._active_sessions())
+        except Exception as e:
+            logger.warning(f"Saving music sessions failed: {e}")
+
+    @save_sessions.before_loop
+    async def before_save_sessions(self):
+        await self.bot.wait_until_ready()
+        # Resume before the first save, which would otherwise overwrite what was playing
+        try:
+            await self.restore_sessions()
+        except Exception as e:
+            logger.exception(f"Resuming music failed: {e}")
+
+    async def restore_sessions(self) -> int:
+        """Rejoin voice and resume each recent session whose channel still has people in it."""
+        resumed = 0
+        for s in await self.sessions.load_recent():
+            channel = self.bot.get_channel(s.channel_id)
+            if not isinstance(channel, discord.VoiceChannel) or not any(not m.bot for m in channel.members):
+                continue  # everyone left while we were down
+            guild = channel.guild
+            try:
+                vc = guild.voice_client
+                if vc and vc.channel and vc.channel.id != channel.id:
+                    continue  # already busy elsewhere in this server
+                if not vc:
+                    await channel.connect()
+                player = GuildPlayer(channel.id)
+                player.queue = list(s.queue)
+                player.current_track = s.current
+                text = self.bot.get_channel(s.text_channel_id) if s.text_channel_id else None
+                player.notification_channel = text if isinstance(text, discord.TextChannel) else None
+                player.seek_position = max(0.0, s.position - REWIND)
+                self.players[channel.id] = player
+                await self.play_next(guild)
+                if s.paused and guild.voice_client and guild.voice_client.is_playing():
+                    guild.voice_client.pause()
+                    player.pause_start_time = time.time()
+                resumed += 1
+                logger.info(f"Resumed music in guild {guild.id} at {fmt_time(s.position)}")
+                if player.notification_channel:
+                    state = "paused at" if s.paused else "picking up at"
+                    more = f" (+{len(s.queue)} queued)" if s.queue else ""
+                    await player.notification_channel.send(
+                        f"🔁 **Facility rebooted.** Back in {channel.mention}, {state} {fmt_time(s.position)} in "
+                        f"**{s.current[1]}**{more}.")
+            except Exception as e:
+                logger.warning(f"Couldn't resume music in channel {s.channel_id}: {e}")
+        return resumed
 
     async def generate_announcement(self, text):
         """Generates a TTS mp3 file using Edge TTS (Natural Voice)"""

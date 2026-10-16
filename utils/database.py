@@ -112,6 +112,17 @@ class DatabaseHandler:
                              earned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                              PRIMARY KEY (guild_id, user_id, achievement_id))''')
 
+                # Music that was playing, so a restart can pick it back up (services/music_sessions.py)
+                await conn.execute('''CREATE TABLE IF NOT EXISTS music_sessions
+                            (channel_id INTEGER PRIMARY KEY,
+                             guild_id INTEGER,
+                             text_channel_id INTEGER,
+                             current TEXT,
+                             position REAL,
+                             queue TEXT,
+                             paused INTEGER,
+                             saved_at REAL)''')
+
                 # Per-server opt-in settings (e.g. the Daily Test Chamber channel)
                 await conn.execute('''CREATE TABLE IF NOT EXISTS guild_settings
                             (guild_id INTEGER,
