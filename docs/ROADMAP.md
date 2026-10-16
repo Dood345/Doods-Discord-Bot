@@ -85,8 +85,8 @@ Deliverable also includes the `add-ai-tool` skill (written once the registry's r
 
 ## Phase 3 — Modernize the plumbing
 
-- Pin `discord.py` to a release instead of `@master`; adopt Components v2 (`LayoutView`) for richer embeds/menus.
-- Auto-load cogs from `commands/` as extensions + owner `!reload <cog>` for hot reload without restarting the service.
+- [x] Pin `discord.py` to a release: `discord.py[voice]==2.7.1` (DAVE voice and Python 3.14 fixes landed in 2.7.0; master was only needed before that).
+- Deferred: Components v2 (`LayoutView`) and cog auto-load + `!reload`. Every deploy restarts the whole service through systemd (and music now resumes), and reloading a cog wouldn't pick up `services/` changes, so hot reload doesn't fit how this bot ships.
 - [x] Startup config report instead of a typed-settings rewrite (`utils/config_report.py`): logs which features are on/off and why, and warns on known traps. Swapping `BotConfig` for pydantic-settings across ~20 files wasn't worth the risk.
 - [x] DB: `schema_version` + migration runner (`utils/migrations.py`) with automatic pre-migration backups, tested against production's real schema.
 - [x] `ruff check` in CI (F + E9: undefined names, unused imports, syntax). No formatter: mixed CRLF/LF would make it rewrite every file.
