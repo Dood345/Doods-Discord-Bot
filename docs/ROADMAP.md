@@ -10,14 +10,14 @@ Each phase is one or more PRs, branch → `dev` → `main`. Each phase ends with
 
 | Issue | Ask | Phase |
 |---|---|---|
-| #104 | Cave queues songs from natural language | 1b `queue_song` tool |
-| #105 | Cave can query local media servers | 1b `media_queue` / Plex tools (`check_auth`) |
-| #106 | Cave can ping local devices | 1b `service_status` tool (`check_auth`) |
-| #84 | Small permanent memory per user | 1d `user_facts` |
-| #90 | Radio toggle: start radio from one song | 2 (music) |
-| #100 | Game list should work with the per-channel/guild system | 2 (games) — quick fix, can go first |
+| #104 | Cave queues songs from natural language | 1b `queue_song` tool ✅ |
+| #105 | Cave can query local media servers | 1b `search_media` / `request_media` ✅ |
+| #106 | Cave can ping local devices | 1b `service_status` tool ✅ |
+| #84 | Small permanent memory per user | 1d `user_facts` ✅ |
+| #90 | Radio toggle: start radio from one song | 2 (music) ✅ |
+| #100 | Game list should work with the per-channel/guild system | 2 (games) ✅ |
 | #103 | Adding a game by link auto-fills info (Steam/Epic) | 2 (games) + agent `add_game` tool |
-| #48 | Gift claim shows item IDs publicly | 2 — privacy fix, use ephemeral replies / select menus |
+| #48 | Gift claim shows item IDs publicly | 2 — privacy fix, use ephemeral replies / select menus ✅ |
 | #69 | Send a link to add to the print queue instead of a file | 2 (homelab) |
 
 ---
@@ -31,7 +31,7 @@ Each phase is one or more PRs, branch → `dev` → `main`. Each phase ends with
 - [x] Privacy Policy describes actual data handling (cross-server memory, reply context, logs, `/clearhistory`)
 - [x] Git history rewritten and force-pushed
 - [x] Deleted merged stale branches (local and remote)
-- [ ] ToS §5 forbids copying/modifying the bot, which conflicts with the repo's open-source `LICENSE`. Pick one.
+- [x] ToS §5 now defers to the GPL-3.0 `LICENSE`: the code is open source; the ToS only covers the hosted instance
 - [x] `OLLAMA_MODEL` env var (the hard-coded `gemma4:12b` didn't exist on the server, so AI chat was 404ing in prod); `think: false`
 - [x] `dialogue.json` moved to `content/` so it actually deploys (prod had been running without it)
 
@@ -43,7 +43,7 @@ Each phase is one or more PRs, branch → `dev` → `main`. Each phase ends with
 - Build `utils/agent/` with a small tool registry: each tool = name, JSON schema, async handler, `requires_auth: bool`, `side_effect: bool`. Loop: call model → run requested tools → feed results back → repeat (max ~4 iterations, per-tool timeout) → final text.
 - Replace the keyword "RAG" blocks with tools.
 
-**1b. Starter tools** (each wraps an existing service/cog — no new business logic in the agent). Read-only ones ✅: `recommend_games`, `list_game_tags`, `now_playing`, `service_status`, `printer_status`, `download_queue`. Side-effect tools ✅ behind confirm cards: `add_game`, `queue_song` (#104), `search_media` + `request_media` (#105). `generate_image` ✅ (shared ImageService: one job at a time, fail-closed safety filter, background post). Still open: `rate_game`, `skip_song`.
+**1b. Starter tools** (each wraps an existing service/cog — no new business logic in the agent). Read-only ones ✅: `recommend_games`, `list_game_tags`, `now_playing`, `service_status`, `printer_status`, `download_queue`. Side-effect tools ✅ behind confirm cards: `add_game`, `queue_song` (#104), `search_media` + `request_media` (#105). `generate_image` ✅ (shared ImageService: one job at a time, fail-closed safety filter, background post). `rate_game` and `skip_song` ✅ (act directly: a rating only touches the caller's own score, and skipping needs the caller in the music's voice channel, same as `/skip`).
 | Tool | Wraps | Gate |
 |---|---|---|
 | `recommend_games`, `search_games`, `add_game`, `rate_game` | `GameService` | — |
@@ -98,6 +98,7 @@ Deliverable also includes the `add-ai-tool` skill (written once the registry's r
 - Nightly SQLite backup (`sqlite3 .backup`) with rotation on the server.
 - Deploy: health check after `systemctl restart`; auto-rollback to previous release dir if the bot isn't online in 60 s.
 - Parametrize the deploy path (`/home/<user>/discordBot`) via a repo variable.
+- Renovate: keep dependencies (`uv.lock`, GitHub Actions, the bgutil provider image) up to date with grouped PRs into `dev`; CI must pass before merge. Pin `discord.py` first (Phase 3) so updates are reviewable.
 
 ---
 

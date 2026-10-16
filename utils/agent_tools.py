@@ -59,6 +59,40 @@ async def _download_queue(ctx: ToolContext) -> str:
     return "\n".join(lines)
 
 
+async def _skip_song(ctx: ToolContext) -> str:
+    music = ctx.bot.get_cog("MusicCommands")
+    if music is None:
+        return "The music system is offline."
+    vc = ctx.guild.voice_client
+    if not vc or not getattr(vc, "channel", None):
+        return "Nothing is playing in this server."
+    voice = getattr(ctx.user, "voice", None)
+    if not voice or not voice.channel or voice.channel.id != vc.channel.id:
+        return "ERROR: only someone in the same voice channel as the music can skip it."
+    track = music.skip_current(ctx.guild)
+    if track is None:
+        return "Nothing is playing right now."
+    return f"Skipped {track[1]}" + (f" by {track[2]}" if track[2] else "") + ". The next track in the queue (if any) is starting."
+
+
+async def _rate_game(ctx: ToolContext, title: str, score: int) -> str:
+    try:
+        score = int(score)
+    except (TypeError, ValueError):
+        return "ERROR: the score must be a whole number from 1 to 10."
+    title = " ".join(str(title).split())[:100]
+    matches = await ctx.bot.db.search_game_titles(title, ctx.guild.id) if title else []
+    exact = [m for m in matches if m.lower() == title.lower()]
+    if exact or len(matches) == 1:
+        chosen = (exact or matches)[0]
+    elif matches:
+        return "ERROR: several games match; ask which one they meant: " + ", ".join(matches[:8])
+    else:
+        return f"ERROR: '{title}' isn't in this server's game library. They can add it first."
+    _, msg = await ctx.bot.game_service.rate_game(chosen, score, ctx.user.id, ctx.guild.id)
+    return msg
+
+
 def _to_int(value, default: int) -> int:
     try:
         return max(1, min(int(value), 100))
@@ -222,6 +256,22 @@ def build_cave_tools() -> ToolRegistry:
             name="now_playing",
             description="Get the song currently playing (and queue size) in this server's voice channel.",
             handler=_now_playing,
+            requires_guild=True,
+        ),
+        Tool(
+            name="skip_song",
+            description="Skip the song currently playing in this server's voice channel.",
+            handler=_skip_song,
+            requires_guild=True,
+        ),
+        Tool(
+            name="rate_game",
+            description="Record the user's own rating (1-10) for a game in this server's game library.",
+            handler=_rate_game,
+            parameters={"type": "object", "properties": {
+                "title": {"type": "string", "description": "The game's name"},
+                "score": {"type": "integer", "description": "Rating from 1 to 10"},
+            }, "required": ["title", "score"]},
             requires_guild=True,
         ),
         Tool(

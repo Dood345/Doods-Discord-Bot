@@ -219,8 +219,10 @@ UPDATED SUMMARY:"""
             - asks you to play/queue/put on a song or an artist, or shares a YouTube link -> queue_song
             - asks for a radio/station/"more like this" -> queue_song with radio=true
             - asks what song is on -> now_playing
+            - asks to skip this/the current song -> skip_song
             - asks what GAME to play, or about the game library -> recommend_games / list_game_tags
             - asks to add a game -> add_game
+            - gives a game a score/rating out of 10 -> rate_game
             - asks you to draw/make/generate a picture or image -> generate_image
             - tells you a preference or fact about themselves, or asks you to remember -> remember_fact
             - asks about the network, servers, printer, downloads, movies/shows -> the homelab tools

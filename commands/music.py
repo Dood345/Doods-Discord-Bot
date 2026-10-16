@@ -630,12 +630,20 @@ class MusicCommands(commands.Cog):
 
     @app_commands.command(name="skip", description="Vote to skip the current track")
     async def skip(self, interaction: discord.Interaction) -> None:
-        vc = interaction.guild.voice_client if interaction.guild else None
-        if vc and vc.is_playing():
-            vc.stop() # This triggers the 'after' callback, which calls play_next()
+        if self.skip_current(interaction.guild):
             await interaction.response.send_message("⏭️ **Skipped.** Protocol advanced.")
         else:
             await interaction.response.send_message("Nothing is playing, genius.", ephemeral=True)
+
+    def skip_current(self, guild: discord.Guild | None) -> tuple[str, str, str] | None:
+        """Skip the playing (or paused) track; returns the skipped track, or None if nothing was on."""
+        vc = guild.voice_client if guild else None
+        if not vc or not (vc.is_playing() or vc.is_paused()):
+            return None
+        player = self.players.get(vc.channel.id) if getattr(vc, "channel", None) else None
+        track = player.current_track if player else None
+        vc.stop()  # triggers the 'after' callback, which calls play_next()
+        return track or ("", "the current track", "")
 
     @app_commands.command(name="queue", description="View the upcoming audio tests")
     async def view_queue(self, interaction: discord.Interaction) -> None:
