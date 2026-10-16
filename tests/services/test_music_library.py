@@ -143,7 +143,7 @@ async def test_song_radio_starts_with_that_song():
 async def test_enqueue_tracks_queues_all_and_starts_playing():
     from types import SimpleNamespace
     music = MusicCommands(MagicMock(music_library=None))
-    music.play_next = AsyncMock()
+    music.play_next = AsyncMock(side_effect=lambda guild: setattr(music.players[7], "current_track", music.players[7].queue[0]))
     vc = MagicMock(channel=SimpleNamespace(id=7, name="Lounge"))
     vc.is_playing.return_value = vc.is_paused.return_value = False
     channel = SimpleNamespace(id=7, name="Lounge")
@@ -151,7 +151,7 @@ async def test_enqueue_tracks_queues_all_and_starts_playing():
     tracks = [("u1", "A", "x"), ("u2", "B", "x"), ("u3", "C", "x")]
 
     msg = await music.enqueue_tracks(member, None, tracks)
-    assert music.players[7].queue == tracks and "+2 more" in msg
+    assert music.players[7].queue == tracks and "Now playing **A**" in msg and "+2 more" in msg
     music.play_next.assert_awaited_once()
 
 
