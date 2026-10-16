@@ -60,7 +60,7 @@ Each phase is one or more PRs, branch → `dev` → `main`. Each phase ends with
 - Side-effecting tools (requesting media, adding games, queueing music for everyone) post a Discord button confirmation instead of acting silently.
 - Per-user AI cooldown; log every tool call (name, args, user) at INFO.
 
-**1d. Better memory.** ✅ `user_facts` + `remember_fact` + `/memory` + `/clearhistory` wipes facts (#84). Rolling summaries ✅ (`ai_summaries`). Still open: embeddings.
+**1d. Better memory.** ✅ `user_facts` + `remember_fact` + `/memory` + `/clearhistory` wipes facts (#84). Rolling summaries ✅ (`ai_summaries`). Embedding recall ✅ (`ai_embeddings`, nomic-embed-text on Ollama's CPU).
 - Rolling summary: when history exceeds N turns, summarize older turns into a per-user summary row instead of dropping them.
 - `user_facts` table ("likes Valheim", "hates horror games") written via `remember_fact`, shown in the system prompt. `/clearhistory` wipes facts too; add `/memory` to show what Cave knows about you (privacy policy already promises deletion).
 - Optional later: Ollama embeddings for semantic recall over old conversations.

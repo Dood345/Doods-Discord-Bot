@@ -38,6 +38,14 @@ class DatabaseHandler:
                              last_id INTEGER,
                              updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
 
+                # Embedded old chat exchanges for recall (history_id = the user message's ai_history id)
+                await conn.execute('''CREATE TABLE IF NOT EXISTS ai_embeddings
+                            (history_id INTEGER PRIMARY KEY,
+                             user_id INTEGER,
+                             text TEXT,
+                             vector BLOB)''')
+                await conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_embeddings_user ON ai_embeddings (user_id)")
+
                 # Long-term facts a user asked Cave to remember (global per user, like ai_history)
                 await conn.execute('''CREATE TABLE IF NOT EXISTS user_facts
                             (id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -314,9 +322,43 @@ class DatabaseHandler:
             async with self.get_connection() as conn:
                 await conn.execute("DELETE FROM ai_history WHERE user_id = ?", (user_id,))
                 await conn.execute("DELETE FROM ai_summaries WHERE user_id = ?", (user_id,))
+                await conn.execute("DELETE FROM ai_embeddings WHERE user_id = ?", (user_id,))
                 await conn.commit()
         except Exception as e:
             logger.error(f"Failed to clear AI history: {e}")
+
+    # --- Embedded chat for recall ---
+    async def get_last_embedded_id(self, user_id: int) -> int:
+        try:
+            async with self.get_connection() as conn:
+                async with conn.execute("SELECT MAX(history_id) FROM ai_embeddings WHERE user_id = ?", (user_id,)) as cursor:
+                    row = await cursor.fetchone()
+            return row[0] or 0
+        except Exception as e:
+            logger.error(f"Failed to get last embedded id: {e}")
+            return 0
+
+    async def add_embeddings(self, user_id: int, items: List[Tuple[int, str, bytes]]):
+        """Store (history_id, text, vector) rows for a user."""
+        try:
+            async with self.get_connection() as conn:
+                # Skip rows whose history was wiped (/clearhistory) while they were being embedded
+                await conn.executemany(
+                    "INSERT OR REPLACE INTO ai_embeddings (history_id, user_id, text, vector) "
+                    "SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM ai_history WHERE id = ?)",
+                    [(hid, user_id, text, vec, hid) for hid, text, vec in items])
+                await conn.commit()
+        except Exception as e:
+            logger.error(f"Failed to store embeddings: {e}")
+
+    async def get_embeddings(self, user_id: int) -> List[Tuple[int, str, bytes]]:
+        try:
+            async with self.get_connection() as conn:
+                async with conn.execute("SELECT history_id, text, vector FROM ai_embeddings WHERE user_id = ?", (user_id,)) as cursor:
+                    return list(await cursor.fetchall())
+        except Exception as e:
+            logger.error(f"Failed to get embeddings: {e}")
+            return []
 
     # --- Rolling chat summaries ---
     async def get_ai_summary(self, user_id: int) -> Tuple[Optional[str], int]:

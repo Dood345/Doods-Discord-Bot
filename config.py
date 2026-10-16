@@ -242,6 +242,8 @@ class BotConfig:
     # AI Configuration
     OLLAMA_URL = os.getenv('OLLAMA_URL')  # e.g. http://localhost:11434
     OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'gemma4:12b')
+    # Embedding model for recalling old chats (e.g. nomic-embed-text); unset disables recall
+    OLLAMA_EMBED_MODEL = os.getenv('OLLAMA_EMBED_MODEL')
 
     # Music Configuration
     MUSIC_DEFAULT_VOLUME = float(os.getenv('MUSIC_DEFAULT_VOLUME', '0.5'))
