@@ -27,6 +27,7 @@ from commands.gift_commands import GiftCommands
 from commands.homelab_commands import HomeLabCommands
 from commands.image_cog import ImageCog
 from commands.music import MusicCommands
+from commands.context_menus import ContextMenus
 from services.gift_service import GiftService
 from services.game_service import GameService
 from services.homelab_service import HomelabService
@@ -88,6 +89,7 @@ class DoodsBot(commands.Bot):
         await self.add_cog(HomeLabCommands(self))
         await self.add_cog(ImageCog(self))
         await self.add_cog(MusicCommands(self))
+        await self.add_cog(ContextMenus(self))
         
         logger.info("All cogs loaded successfully")
     
