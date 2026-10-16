@@ -397,7 +397,7 @@ class MusicCommands(commands.Cog):
     @staticmethod
     def track_source(url: str) -> str:
         if url.startswith(PLEX_PREFIX):
-            return "📀 your library"
+            return "📀 the facility archives"
         if "soundcloud.com" in url:
             return "☁️ SoundCloud"
         return "▶️ YouTube"

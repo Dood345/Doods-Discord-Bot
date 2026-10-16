@@ -85,7 +85,7 @@ async def test_youtube_links_skip_library_and_soundcloud():
     music = music_with(library=lib, yt_info={"url": "stream", "title": "Mix", "uploader": "DJ"})
     assert await music.resolve_track("https://www.youtube.com/watch?v=abc") == ("stream", "Mix", "DJ")
     lib.find.assert_not_awaited()
-    assert MusicCommands.track_source(PLEX_PREFIX + "/p") == "📀 your library"
+    assert MusicCommands.track_source(PLEX_PREFIX + "/p") == "📀 the facility archives"
 
 
 async def test_plex_is_searched_without_filler_words():
