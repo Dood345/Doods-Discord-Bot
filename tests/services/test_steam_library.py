@@ -37,7 +37,8 @@ async def test_import_multiplayer_skips_existing_and_caches(temp_db, tmp_path):
     # Re-run: everything comes from the cache, nothing is added twice
     imp2, store2 = importer(temp_db, tmp_path)
     counts = await imp2.run(OWNED, progress=lambda line: None)
-    store2.lookup.assert_not_awaited()
+    # Found games come from the cache; only the failed lookup (appid 30) is retried
+    assert [c.args[0] for c in store2.lookup.await_args_list] == ["https://store.steampowered.com/app/30/"]
     assert counts["added"] == 0 and counts["existing"] == 2
 
 
