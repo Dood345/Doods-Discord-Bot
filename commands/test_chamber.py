@@ -88,8 +88,11 @@ class TestChamber(commands.Cog):
                                                     ephemeral=True)
             return
         await self.service.set_channel(interaction.guild_id, channel.id)
+        # Trivia pays out Science Points, so running the Test Chamber turns them on
+        await self.bot.points_service.set_enabled(interaction.guild_id, True)
         await interaction.response.send_message(
-            f"🧪 Daily Test Chamber online in {channel.mention}. A question every day at 6 pm. "
+            f"🧪 Daily Test Chamber online in {channel.mention}. A question every day at 6 pm "
+            "(this also switches on Science Points). "
             "Use `/testchamber now` to run today's right away, or `/testchamber off` to stop.")
 
     @group.command(name="off", description="Stop the daily trivia question in this server")

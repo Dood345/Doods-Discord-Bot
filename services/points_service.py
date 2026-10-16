@@ -19,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 ACHIEVEMENTS_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "content", "achievements.json")
 ACTIVITY_POINTS = 1
+SETTING_ENABLED = "science_points"
+DISABLED_MSG = "Science Points are off in this server. A server manager can turn them on with `/sciencepoints on`."
 
 
 @dataclass(frozen=True)
@@ -52,6 +54,27 @@ class PointsService:
         self.by_id: Dict[str, Achievement] = {a.id: a for a in self.achievements}
         self.tz = tz or ZoneInfo(BotConfig.BOT_TIMEZONE)
         self._seen = set()
+        self._enabled: Dict[int, bool] = {}
+
+    # --- Per-server opt-in (off until a manager turns it on) ---
+
+    async def is_enabled(self, guild_id: int) -> bool:
+        if guild_id not in self._enabled:  # cached: this runs on every message
+            async with self.db.get_connection() as conn:
+                async with conn.execute("SELECT 1 FROM guild_settings WHERE guild_id = ? AND key = ?",
+                                        (guild_id, SETTING_ENABLED)) as cur:
+                    self._enabled[guild_id] = await cur.fetchone() is not None
+        return self._enabled[guild_id]
+
+    async def set_enabled(self, guild_id: int, enabled: bool):
+        async with self.db.get_connection() as conn:
+            if enabled:
+                await conn.execute("INSERT OR REPLACE INTO guild_settings (guild_id, key, value) VALUES (?, ?, 'on')",
+                                   (guild_id, SETTING_ENABLED))
+            else:
+                await conn.execute("DELETE FROM guild_settings WHERE guild_id = ? AND key = ?", (guild_id, SETTING_ENABLED))
+            await conn.commit()
+        self._enabled[guild_id] = enabled
 
     def local_date(self, now: Optional[datetime] = None) -> str:
         return (now or datetime.now(self.tz)).astimezone(self.tz).date().isoformat()
@@ -65,7 +88,7 @@ class PointsService:
     async def record_activity(self, guild_id: int, user_id: int, now: Optional[datetime] = None) -> List[Achievement]:
         """+1 for the first message of the (local) day on this server. Returns newly earned achievements."""
         key = f"activity:{guild_id}:{user_id}:{self.local_date(now)}"
-        if key in self._seen:  # skip the DB for everyone's 2nd+ message of the day
+        if key in self._seen or not await self.is_enabled(guild_id):  # skip the DB for everyone's 2nd+ message of the day
             return []
         if len(self._seen) > 10000:
             self._seen.clear()

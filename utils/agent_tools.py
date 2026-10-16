@@ -98,6 +98,8 @@ async def _science_points(ctx: ToolContext) -> str:
     points_service = getattr(ctx.bot, "points_service", None)
     if points_service is None:
         return "The Science Points system is offline."
+    if not await points_service.is_enabled(ctx.guild.id):
+        return "Science Points are turned off in this server (a server manager can enable them with /sciencepoints on)."
     points, rank, achievements = await points_service.profile(ctx.guild.id, ctx.user.id)
     mine = (f"{ctx.user.display_name} has {points} Science Points (rank #{rank})"
             + (f" and achievements: {', '.join(a.name for a in achievements)}" if achievements else "")

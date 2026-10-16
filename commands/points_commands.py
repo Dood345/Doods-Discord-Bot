@@ -4,6 +4,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from services.points_service import DISABLED_MSG
 from utils.members import member_name
 
 MEDALS = ["🥇", "🥈", "🥉"]
@@ -16,10 +17,39 @@ class PointsCommands(commands.Cog):
         self.bot = bot
         self.points = bot.points_service
 
+    group = app_commands.Group(name="sciencepoints", description="Science Points for this server (server managers)",
+                               default_permissions=discord.Permissions(manage_guild=True), guild_only=True)
+
+    @group.command(name="on", description="Start awarding Science Points in this server")
+    async def turn_on(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.manage_guild:
+            await interaction.response.send_message("⛔ Server managers only.", ephemeral=True)
+            return
+        await self.points.set_enabled(interaction.guild_id, True)
+        await interaction.response.send_message(
+            "🧪 Science Points online! Everyone earns a point for showing up each day, plus Test Chamber "
+            "winnings. Check `/points` and `/leaderboard`.")
+
+    @group.command(name="off", description="Stop awarding Science Points in this server")
+    async def turn_off(self, interaction: discord.Interaction):
+        if not interaction.user.guild_permissions.manage_guild:
+            await interaction.response.send_message("⛔ Server managers only.", ephemeral=True)
+            return
+        await self.points.set_enabled(interaction.guild_id, False)
+        await interaction.response.send_message("🧪 Science Points paused. Existing points are kept on file.")
+
+    async def _require_enabled(self, interaction: discord.Interaction) -> bool:
+        if await self.points.is_enabled(interaction.guild_id):
+            return True
+        await interaction.response.send_message(f"🧪 {DISABLED_MSG}", ephemeral=True)
+        return False
+
     @app_commands.command(name="points", description="Check Science Points and achievements")
     @app_commands.describe(member="Whose file to pull (default: yours)")
     @app_commands.guild_only()
     async def points_command(self, interaction: discord.Interaction, member: discord.Member = None):
+        if not await self._require_enabled(interaction):
+            return
         member = member or interaction.user
         points, rank, achievements = await self.points.profile(interaction.guild_id, member.id)
         if points <= 0:
@@ -38,6 +68,8 @@ class PointsCommands(commands.Cog):
     @app_commands.command(name="leaderboard", description="Top test subjects in this facility")
     @app_commands.guild_only()
     async def leaderboard_command(self, interaction: discord.Interaction):
+        if not await self._require_enabled(interaction):
+            return
         await interaction.response.defer()  # name lookups can hit the API, past Discord's 3 s ack window
         board = await self.points.leaderboard(interaction.guild_id)
         if not board:
