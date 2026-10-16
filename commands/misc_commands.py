@@ -59,7 +59,11 @@ class MiscCommands(commands.Cog):
             inline=False)
         summary, _ = await self.bot.db.get_ai_summary(interaction.user.id)
         if summary:
-            embed.add_field(name="Cave's summary of your older chats", value=summary[:1024], inline=False)
+            embed.add_field(name="Cave's summary of your older server chats", value=summary[:1024], inline=False)
+        dm_summary, _ = await self.bot.db.get_ai_summary(interaction.user.id, dm=True)
+        if dm_summary:
+            embed.add_field(name="Summary of your DMs (only used in servers if you ask about your DMs)",
+                            value=dm_summary[:1024], inline=False)
         embed.add_field(name="Chat history", value=f"{len(history)} stored messages (Cave reads the last 10 plus the summary)", inline=False)
         embed.set_footer(text="/clearhistory wipes both.")
         await interaction.response.send_message(embed=embed, ephemeral=True)

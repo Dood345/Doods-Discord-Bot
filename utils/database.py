@@ -49,6 +49,19 @@ class DatabaseHandler:
                                f"SELECT {col_list}, 0 FROM {table}_legacy")
             await conn.execute(f"DROP TABLE {table}_legacy")
 
+    async def _separate_dm_memory(self, conn, had_dm_summaries: bool):
+        """One-time upgrade for DBs from before DM memory was kept apart from server memory."""
+        if "is_dm" not in await self._columns(conn, "ai_embeddings"):
+            await conn.execute("ALTER TABLE ai_embeddings ADD COLUMN is_dm INTEGER DEFAULT 0")
+            await conn.execute("UPDATE ai_embeddings SET is_dm = 1 WHERE history_id IN "
+                               "(SELECT id FROM ai_history WHERE guild_id IS NULL)")
+        if "is_dm" not in await self._columns(conn, "user_facts"):
+            # Where old notes were saved wasn't recorded; they stay visible everywhere
+            await conn.execute("ALTER TABLE user_facts ADD COLUMN is_dm INTEGER DEFAULT 0")
+        if not had_dm_summaries:
+            # Old summaries mixed DM and server chat: rebuild them per scope on the next chat
+            await conn.execute("DELETE FROM ai_summaries")
+
     async def setup_tables(self):
         """Initialize all database tables, now including the Recreation Repository."""
         try:
@@ -78,7 +91,8 @@ class DatabaseHandler:
                             (history_id INTEGER PRIMARY KEY,
                              user_id INTEGER,
                              text TEXT,
-                             vector BLOB)''')
+                             vector BLOB,
+                             is_dm INTEGER DEFAULT 0)''')
                 await conn.execute("CREATE INDEX IF NOT EXISTS idx_ai_embeddings_user ON ai_embeddings (user_id)")
 
                 # Science Points: append-only ledger per server; award_key makes each award idempotent
@@ -144,7 +158,17 @@ class DatabaseHandler:
                             (id INTEGER PRIMARY KEY AUTOINCREMENT,
                              user_id INTEGER,
                              fact TEXT,
-                             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+                             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                             is_dm INTEGER DEFAULT 0)''')
+
+                # DM conversations get their own rolling summary, so server chats never see them
+                had_dm_summaries = bool(await self._columns(conn, "ai_dm_summaries"))
+                await conn.execute('''CREATE TABLE IF NOT EXISTS ai_dm_summaries
+                            (user_id INTEGER PRIMARY KEY,
+                             summary TEXT,
+                             last_id INTEGER,
+                             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)''')
+                await self._separate_dm_memory(conn, had_dm_summaries)
                 
                 # --- NEW: Games Repository ---
                 # Status: 'seen', 'played', 'playing', 'wishlist'
@@ -394,12 +418,15 @@ class DatabaseHandler:
         except Exception as e:
             logger.error(f"Failed to add AI message: {e}")
 
-    async def get_ai_history(self, user_id: int, guild_id: Optional[int] = None, limit: int = 20) -> List[Tuple[str, str]]:
+    async def get_ai_history(self, user_id: int, guild_id: Optional[int] = None, limit: int = 20,
+                             include_dms: bool = True) -> List[Tuple[str, str]]:
         try:
             async with self.get_connection() as conn:
                 if guild_id is None:
-                    # Global Context (All Servers)
-                    async with conn.execute("SELECT role, content FROM ai_history WHERE user_id = ? ORDER BY id DESC LIMIT ?", (user_id, limit)) as cursor:
+                    # Global Context (All Servers, plus DMs unless include_dms=False)
+                    dm_filter = "" if include_dms else " AND guild_id IS NOT NULL"
+                    async with conn.execute(f"SELECT role, content FROM ai_history WHERE user_id = ?{dm_filter} "
+                                            "ORDER BY id DESC LIMIT ?", (user_id, limit)) as cursor:
                         rows = await cursor.fetchall()
                 else:
                     # Local Context (Specific Server)
@@ -411,11 +438,26 @@ class DatabaseHandler:
             logger.error(f"Failed to get AI history: {e}")
             return []
 
+    async def get_ai_history_with_scope(self, user_id: int, limit: int = 20,
+                                        include_dms: bool = True) -> List[Tuple[str, str, bool]]:
+        """Like get_ai_history(user_id, None) but each row also says whether it came from a DM."""
+        dm_filter = "" if include_dms else " AND guild_id IS NOT NULL"
+        try:
+            async with self.get_connection() as conn:
+                async with conn.execute(f"SELECT role, content, guild_id IS NULL FROM ai_history WHERE user_id = ?{dm_filter} "
+                                        "ORDER BY id DESC LIMIT ?", (user_id, limit)) as cursor:
+                    rows = await cursor.fetchall()
+            return [(role, content, bool(is_dm)) for role, content, is_dm in reversed(rows)]
+        except Exception as e:
+            logger.error(f"Failed to get AI history: {e}")
+            return []
+
     async def clear_ai_history(self, user_id: int):
         try:
             async with self.get_connection() as conn:
                 await conn.execute("DELETE FROM ai_history WHERE user_id = ?", (user_id,))
                 await conn.execute("DELETE FROM ai_summaries WHERE user_id = ?", (user_id,))
+                await conn.execute("DELETE FROM ai_dm_summaries WHERE user_id = ?", (user_id,))
                 await conn.execute("DELETE FROM ai_embeddings WHERE user_id = ?", (user_id,))
                 await conn.commit()
         except Exception as e:
@@ -437,41 +479,48 @@ class DatabaseHandler:
         try:
             async with self.get_connection() as conn:
                 # Skip rows whose history was wiped (/clearhistory) while they were being embedded
+                # is_dm comes from where the exchange happened (DMs are stored with guild_id NULL)
                 await conn.executemany(
-                    "INSERT OR REPLACE INTO ai_embeddings (history_id, user_id, text, vector) "
-                    "SELECT ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM ai_history WHERE id = ?)",
+                    "INSERT OR REPLACE INTO ai_embeddings (history_id, user_id, text, vector, is_dm) "
+                    "SELECT ?, ?, ?, ?, guild_id IS NULL FROM ai_history WHERE id = ?",
                     [(hid, user_id, text, vec, hid) for hid, text, vec in items])
                 await conn.commit()
         except Exception as e:
             logger.error(f"Failed to store embeddings: {e}")
 
-    async def get_embeddings(self, user_id: int) -> List[Tuple[int, str, bytes]]:
+    async def get_embeddings(self, user_id: int, include_dms: bool = True) -> List[Tuple[int, str, bytes]]:
         try:
             async with self.get_connection() as conn:
-                async with conn.execute("SELECT history_id, text, vector FROM ai_embeddings WHERE user_id = ?", (user_id,)) as cursor:
+                dm_filter = "" if include_dms else " AND is_dm = 0"
+                async with conn.execute(f"SELECT history_id, text, vector FROM ai_embeddings WHERE user_id = ?{dm_filter}",
+                                        (user_id,)) as cursor:
                     return list(await cursor.fetchall())
         except Exception as e:
             logger.error(f"Failed to get embeddings: {e}")
             return []
 
     # --- Rolling chat summaries ---
-    async def get_ai_summary(self, user_id: int) -> Tuple[Optional[str], int]:
-        """(summary, last summarized ai_history id); (None, 0) if none yet."""
+    async def get_ai_summary(self, user_id: int, dm: bool = False) -> Tuple[Optional[str], int]:
+        """(summary, last summarized ai_history id) for server chats, or DMs with dm=True; (None, 0) if none yet."""
+        table = "ai_dm_summaries" if dm else "ai_summaries"
         try:
             async with self.get_connection() as conn:
-                async with conn.execute("SELECT summary, last_id FROM ai_summaries WHERE user_id = ?", (user_id,)) as cursor:
+                async with conn.execute(f"SELECT summary, last_id FROM {table} WHERE user_id = ?", (user_id,)) as cursor:
                     row = await cursor.fetchone()
             return (row[0], row[1]) if row else (None, 0)
         except Exception as e:
             logger.error(f"Failed to get AI summary: {e}")
             return None, 0
 
-    async def get_unsummarized_history(self, user_id: int, after_id: int, keep_recent: int) -> List[Tuple[int, str, str]]:
-        """(id, role, content) rows newer than after_id, excluding the newest keep_recent rows."""
+    async def get_unsummarized_history(self, user_id: int, after_id: int, keep_recent: int,
+                                       dm: Optional[bool] = None) -> List[Tuple[int, str, str]]:
+        """(id, role, content) rows newer than after_id, excluding the newest keep_recent rows.
+        dm=True: DM rows only; dm=False: server rows only; None: both."""
+        scope = {None: "", True: " AND guild_id IS NULL", False: " AND guild_id IS NOT NULL"}[dm]
         try:
             async with self.get_connection() as conn:
                 async with conn.execute(
-                    "SELECT id, role, content FROM ai_history WHERE user_id = ? AND id > ? ORDER BY id DESC LIMIT -1 OFFSET ?",
+                    f"SELECT id, role, content FROM ai_history WHERE user_id = ? AND id > ?{scope} ORDER BY id DESC LIMIT -1 OFFSET ?",
                     (user_id, after_id, keep_recent)) as cursor:
                     rows = await cursor.fetchall()
             return list(reversed(rows))
@@ -479,11 +528,12 @@ class DatabaseHandler:
             logger.error(f"Failed to get unsummarized history: {e}")
             return []
 
-    async def set_ai_summary(self, user_id: int, summary: str, last_id: int):
+    async def set_ai_summary(self, user_id: int, summary: str, last_id: int, dm: bool = False):
+        table = "ai_dm_summaries" if dm else "ai_summaries"
         try:
             async with self.get_connection() as conn:
                 await conn.execute(
-                    "INSERT OR REPLACE INTO ai_summaries (user_id, summary, last_id, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
+                    f"INSERT OR REPLACE INTO {table} (user_id, summary, last_id, updated_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)",
                     (user_id, summary, last_id))
                 await conn.commit()
         except Exception as e:
@@ -577,7 +627,7 @@ class DatabaseHandler:
     MAX_USER_FACTS = 20
     MAX_FACT_LENGTH = 200
 
-    async def add_user_fact(self, user_id: int, fact: str) -> str:
+    async def add_user_fact(self, user_id: int, fact: str, is_dm: bool = False) -> str:
         """Store a fact for a user. Returns 'added', 'duplicate', 'full' or 'error'."""
         fact = " ".join(fact.split())[:self.MAX_FACT_LENGTH]
         if not fact:
@@ -590,17 +640,19 @@ class DatabaseHandler:
                     return "duplicate"
                 if len(existing) >= self.MAX_USER_FACTS:
                     return "full"
-                await conn.execute("INSERT INTO user_facts (user_id, fact) VALUES (?, ?)", (user_id, fact))
+                await conn.execute("INSERT INTO user_facts (user_id, fact, is_dm) VALUES (?, ?, ?)", (user_id, fact, int(is_dm)))
                 await conn.commit()
                 return "added"
         except Exception as e:
             logger.error(f"Failed to add user fact: {e}")
             return "error"
 
-    async def get_user_facts(self, user_id: int) -> List[str]:
+    async def get_user_facts(self, user_id: int, include_dms: bool = True) -> List[str]:
         try:
             async with self.get_connection() as conn:
-                async with conn.execute("SELECT fact FROM user_facts WHERE user_id = ? ORDER BY id", (user_id,)) as cursor:
+                dm_filter = "" if include_dms else " AND is_dm = 0"
+                async with conn.execute(f"SELECT fact FROM user_facts WHERE user_id = ?{dm_filter} ORDER BY id",
+                                        (user_id,)) as cursor:
                     return [r[0] for r in await cursor.fetchall()]
         except Exception as e:
             logger.error(f"Failed to get user facts: {e}")

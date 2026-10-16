@@ -108,7 +108,19 @@ async def _science_points(ctx: ToolContext) -> str:
     names = []
     for i, (uid, pts) in enumerate(board, 1):
         names.append(f"{i}. {await member_name(ctx.guild, uid)} ({pts})")
-    return mine + ". Top of this server's leaderboard: " + ("; ".join(names) if names else "nobody yet") + "."
+    # The real rules, so the model explains these instead of inventing its own
+    chamber = getattr(ctx.bot, "test_chamber", None)
+    chamber_on = chamber is not None and ctx.guild.id in await chamber.channels()
+    rules = ("HOW SCIENCE POINTS WORK (the only ways to earn them; don't invent others): "
+             "+1 for your first message in this server each day. "
+             + ("Daily Test Chamber trivia (posted at 6 pm): +10 for the first correct answer, +3 for other correct "
+                "answers. " if chamber_on else "Daily Test Chamber trivia (+10 first correct, +3 other correct) is not "
+                "running in this server; a manager can start it with /testchamber channel. ")
+             + "Achievements unlock at milestones: "
+             + "; ".join(f"{a.name} ({a.description})" for a in points_service.achievements)
+             + ". Commands: /points and /leaderboard.")
+    return (mine + ". Top of this server's leaderboard: " + ("; ".join(names) if names else "nobody yet") + ".\n"
+            + rules)
 
 
 def _to_int(value, default: int) -> int:
@@ -262,7 +274,8 @@ async def _generate_image(ctx: ToolContext, prompt: str) -> str:
 
 
 async def _remember_fact(ctx: ToolContext, fact: str) -> str:
-    status = await ctx.bot.db.add_user_fact(ctx.user.id, str(fact))
+    # Notes made in DMs stay private to DMs (servers only see them if the user asks about their DMs)
+    status = await ctx.bot.db.add_user_fact(ctx.user.id, str(fact), is_dm=ctx.guild is None)
     return {
         "added": "Saved to this user's permanent file.",
         "duplicate": "Already in this user's file.",
