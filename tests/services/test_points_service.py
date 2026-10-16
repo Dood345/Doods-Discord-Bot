@@ -2,6 +2,7 @@ from datetime import datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from zoneinfo import ZoneInfo
+import discord
 
 from commands.points_commands import PointsCommands
 from services.points_service import PointsService, load_achievements
@@ -85,13 +86,19 @@ async def test_points_commands_never_ping(temp_db):
     i = interaction(guild, SimpleNamespace(id=2, display_name="Wheatley"))
     await PointsCommands.leaderboard_command.callback(cog, i)
     i.response.defer.assert_awaited_once()  # acked before any member lookups
-    text = i.followup.send.call_args.args[0]
+    text = card_text(i.followup.send.call_args.kwargs["view"])
     assert text.index("GLaDOS") < text.index("Wheatley") and "<@" not in text
     assert i.followup.send.call_args.kwargs["allowed_mentions"].users is False
 
     i = interaction(guild, SimpleNamespace(id=2, display_name="Wheatley"))
     await PointsCommands.points_command.callback(cog, i)
-    assert "10 Science Points (rank #2" in i.response.send_message.call_args.args[0]
+    text = card_text(i.response.send_message.call_args.kwargs["view"])
+    assert "**10** Science Points · rank **#2**" in text and "Wheatley" in text
+    assert i.response.send_message.call_args.kwargs["allowed_mentions"].users is False
+
+
+def card_text(view) -> str:
+    return "\n".join(c.content for c in view.walk_children() if isinstance(c, discord.ui.TextDisplay))
 
 
 async def test_science_points_tool(temp_db):

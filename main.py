@@ -21,21 +21,8 @@ from utils.dialogue_manager import DialogueManager
 from utils.streaming import ReplyStreamer
 from utils.error_reporting import ErrorReporter, handle_app_command_error
 from utils.config_report import log_report as log_config_report
-from commands.character_commands import CharacterCommands
-from commands.social_commands import SocialCommands
-from commands.game_commands import GameCommands
-from commands.misc_commands import MiscCommands
-from commands.gift_commands import GiftCommands
-from commands.homelab_commands import HomeLabCommands
-from commands.image_cog import ImageCog
-from commands.music import MusicCommands
-from commands.context_menus import ContextMenus
-from commands.points_commands import PointsCommands
-from commands.test_chamber import TestChamber
-from commands.game_night import GameNight
-from commands.announcements import Announcements
-from commands.voice_cave import VoiceCave
-from commands.maintenance import Maintenance, write_ready_marker
+from commands.maintenance import write_ready_marker
+from utils.hot_reload import EXTENSIONS, Reload
 from services.gift_service import GiftService
 from services.game_service import GameService
 from services.homelab_service import HomelabService
@@ -95,22 +82,10 @@ class DoodsBot(commands.Bot):
         # Setup Database Tables
         await self.db.setup_tables()
         
-        # Add cogs
-        await self.add_cog(CharacterCommands(self))
-        await self.add_cog(SocialCommands(self))
-        await self.add_cog(GameCommands(self))
-        await self.add_cog(MiscCommands(self))
-        await self.add_cog(GiftCommands(self))
-        await self.add_cog(HomeLabCommands(self))
-        await self.add_cog(ImageCog(self))
-        await self.add_cog(MusicCommands(self))
-        await self.add_cog(ContextMenus(self))
-        await self.add_cog(PointsCommands(self))
-        await self.add_cog(TestChamber(self))
-        await self.add_cog(GameNight(self))
-        await self.add_cog(Announcements(self))
-        await self.add_cog(VoiceCave(self))
-        await self.add_cog(Maintenance(self))
+        # Add cogs: each commands/ module is an extension so `!reload` can swap it live (utils/hot_reload.py)
+        for extension in EXTENSIONS:
+            await self.load_extension(extension)
+        await self.add_cog(Reload(self))  # not an extension: it must never reload itself away
         
         logger.info("All cogs loaded successfully")
     

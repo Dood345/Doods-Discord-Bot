@@ -64,7 +64,7 @@ async def test_add_game_tool_fills_from_link(temp_db):
     result = await build_cave_tools().dispatch(
         "add_game", {"link": info["store_link"], "title": "valheim game", "min_players": 1, "max_players": 4}, ctx)
     assert result.startswith("PENDING")
-    card = ch.send.call_args.args[0]
+    card = ch.send.call_args.kwargs["view"].body.content
     assert "**Valheim** (1-10 players" in card and "Very Positive" in card
 
     view = ch.send.call_args.kwargs["view"]

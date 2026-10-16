@@ -1,6 +1,8 @@
 """Game-related commands for the Discord bot - Powered by Aperture Science"""
 
 import discord
+
+from utils.layouts import game_library_card
 from discord import app_commands
 from discord.ext import commands
 import logging
@@ -164,44 +166,8 @@ class GameCommands(commands.Cog):
         if tag_search: desc.append(f"Tag: **{tag_search}**")
         if players: desc.append(f"Player Count: **{players}**")
         
-        description = "\n".join(desc) + f"\nTotal Simulations: {len(games)}"
-        
-        embed = discord.Embed(
-            title="🔬 Aperture Science Mandatory Fun Modules",
-            description=description,
-            color=0xFFA500 # Aperture Orange
-        )
-        
-        # Helper to format game line
-        def format_game(g):
-            rating = f"{g['avg_rating']:.1f}" if g['avg_rating'] else "N/A"
-            players = f"{g['min_players']}-{g['max_players']}"
-            ideal = f" (Ideal: {g['ideal_players']})" if g['ideal_players'] else ""
-            state = f"[{g['release_state']}]" if g['release_state'] else ""
-            return f"• **{g['title']}** {state}\n  ╚ Rating: {rating}/10 | Players: {players}{ideal}"
-
-        # Group by status if no status filter is applied
-        if not status_val:
-            for status in ["playing", "wishlisted", "unknown", "played", "avoid"]:
-                status_games = [g for g in games if g['status'].lower() == status]
-                if status_games:
-                    field_value = ""
-                    for game in status_games:
-                         field_value += format_game(game) + "\n"
-                    
-                    if len(field_value) > 1024: field_value = field_value[:1020] + "..."
-                    embed.add_field(name=f"📂 {status.title()}", value=field_value, inline=False)
-        else:
-            # Simple flat list if filtered by status
-            field_value = ""
-            for game in games:
-                field_value += format_game(game) + "\n"
-            
-            if len(field_value) > 4000: field_value = field_value[:4000] + "..." # Description limit
-            embed.description += "\n\n" + field_value
-
-        embed.set_footer(text="Testing must continue indefinitely.")
-        await interaction.followup.send(embed=embed)
+        card = game_library_card(games, desc, grouped=not status_val)
+        await interaction.followup.send(view=card, allowed_mentions=discord.AllowedMentions.none())  # titles are user input
 
     @game_group.command(name="update", description="Modify a testing protocol (fill at least one field)")
     @app_commands.autocomplete(title_search=game_title_autocomplete)
