@@ -30,6 +30,7 @@ from commands.music import MusicCommands
 from commands.context_menus import ContextMenus
 from commands.points_commands import PointsCommands
 from commands.test_chamber import TestChamber
+from commands.game_night import GameNight
 from services.gift_service import GiftService
 from services.game_service import GameService
 from services.homelab_service import HomelabService
@@ -98,6 +99,7 @@ class DoodsBot(commands.Bot):
         await self.add_cog(ContextMenus(self))
         await self.add_cog(PointsCommands(self))
         await self.add_cog(TestChamber(self))
+        await self.add_cog(GameNight(self))
         
         logger.info("All cogs loaded successfully")
     
