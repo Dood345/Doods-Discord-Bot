@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 # The IP of your ComfyUI machine
 COMFY_URL = BotConfig.COMFY_URL
 CLIENT_ID = str(uuid.uuid4())
-GENERATION_TIMEOUT = 180  # seconds to wait on ComfyUI's websocket
+GENERATION_TIMEOUT = 300  # seconds of websocket silence before giving up (a cold model load sends nothing)
 
 def is_comfy_online():
     """Fast check to see if ComfyUI is running"""
@@ -21,6 +21,15 @@ def is_comfy_online():
             return response.status == 200
     except Exception:
         return False
+
+def free_comfy_memory():
+    """Ask ComfyUI to drop its models from VRAM/RAM, so Ollama gets the GPU back after an image."""
+    try:
+        req = urllib.request.Request(f"{COMFY_URL}/free", data=json.dumps({"unload_models": True, "free_memory": True}).encode(),
+                                     headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=10).close()
+    except Exception as e:
+        logger.warning(f"Couldn't free ComfyUI memory: {e}")
 
 def queue_prompt(prompt_workflow):
     p = {"prompt": prompt_workflow, "client_id": CLIENT_ID}

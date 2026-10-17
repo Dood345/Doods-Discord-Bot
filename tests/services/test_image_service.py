@@ -14,11 +14,13 @@ from utils.ai_handler import AIHandler
 @pytest.fixture
 def comfy(monkeypatch):
     """Fake ComfyUI: online, returns PNG bytes."""
-    state = SimpleNamespace(online=True, prompts=[])
+    state = SimpleNamespace(online=True, prompts=[], events=[], result=b"PNG")
 
     def fake_generate(prompt):
         state.prompts.append(prompt)
-        return b"PNG"
+        state.events.append("generate")
+        return state.result
+    monkeypatch.setattr(image_mod, "free_comfy_memory", lambda: state.events.append("free"))
     monkeypatch.setattr(image_mod, "is_comfy_online", lambda: state.online)
     monkeypatch.setattr(image_mod, "generate_image", fake_generate)
     return state
@@ -26,7 +28,7 @@ def comfy(monkeypatch):
 
 def fake_ai(result="enhanced prompt", available=True):
     return SimpleNamespace(is_available=lambda: available,
-                           enhance_image_prompt=AsyncMock(return_value=result))
+                           enhance_image_prompt=AsyncMock(return_value=result), unload_models=AsyncMock())
 
 
 async def test_generates_with_enhanced_prompt_then_cools_down(comfy):
@@ -81,3 +83,16 @@ async def test_tool_starts_background_job_and_posts_image(comfy):
 
     again = await build_cave_tools().dispatch("generate_image", {"prompt": "another"}, ctx)
     assert "less than a minute" in again
+
+
+async def test_gpu_is_handed_to_comfy_and_back(comfy):
+    ai = fake_ai()
+    ai.unload_models = AsyncMock(side_effect=lambda: comfy.events.append("unload ollama"))
+    svc = ImageService(ai)
+    assert (await svc.generate(1, "a robot")).status == "ok"
+    assert comfy.events == ["unload ollama", "generate", "free"]
+
+    comfy.events.clear()
+    comfy.result = None                                  # a failed job still gives the GPU back
+    assert (await svc.generate(2, "a robot")).status == "failed"
+    assert comfy.events == ["unload ollama", "generate", "free"]

@@ -111,6 +111,18 @@ class AIHandler:
         """Check if AI is available"""
         return self.client is not None
 
+    async def unload_models(self) -> None:
+        """Free the GPU for an image job: Ollama unloads the chat model (the next chat reloads it, ~6-8 s)."""
+        if not self.ollama_url:
+            return
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(self.ollama_url, json={"model": self.model_name, "keep_alive": 0},
+                                        timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                    await resp.read()
+        except Exception as e:
+            logger.warning(f"Couldn't unload the chat model before an image: {e}")
+
     async def _generate(self, prompt: str) -> str:
         async with aiohttp.ClientSession() as session:
             payload = {

@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass
 from typing import Optional
 
-from utils.image_gen import generate_image, is_comfy_online
+from utils.image_gen import free_comfy_memory, generate_image, is_comfy_online
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,13 @@ class ImageService:
                 logger.info(f"Image prompt refused for user {user_id}")
                 return ImageResult("refused")
 
-            image = await asyncio.to_thread(generate_image, enhanced)
+            # The GPU (10 GB) can't hold the chat model and the image model at once: hand it over, then back
+            if self.ai is not None and self.ai.is_available():
+                await self.ai.unload_models()
+            try:
+                image = await asyncio.to_thread(generate_image, enhanced)
+            finally:
+                await asyncio.to_thread(free_comfy_memory)
             if not image:
                 return ImageResult("failed", enhanced_prompt=enhanced)
             return ImageResult("ok", image=image, enhanced_prompt=enhanced)
