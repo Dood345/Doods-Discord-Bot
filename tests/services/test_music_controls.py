@@ -1,4 +1,5 @@
 """Card buttons (pause / skip / restart) and leaving voice when everyone's gone."""
+import discord
 import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -184,3 +185,17 @@ async def test_queue_expiry_and_reboot_settings_persist(temp_db):
     p = GuildPlayer(5)
     p.last_active = 0.0
     assert is_stale(p, now=QUEUE_TTL + 1) and not is_stale(p, now=QUEUE_TTL + 1, ttl=3 * 86400)
+
+
+async def test_failed_join_leaves_the_queue_where_it_was():
+    cog, guild, member, p, target = resume_setup()
+    target.connect = AsyncMock(side_effect=discord.ClientException("no perms"))
+    reply = await cog.resume_for(member)
+    assert "couldn't join" in reply and cog.players[5] is p and p.channel_id == 5 and p.seek_position is None
+
+
+async def test_no_second_start_while_a_track_is_loading():
+    cog, guild, member, p, target = resume_setup()
+    p.starting = True
+    assert "already starting" in await cog.resume_for(member)
+    target.connect.assert_not_awaited()

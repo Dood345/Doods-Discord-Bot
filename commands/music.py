@@ -106,6 +106,7 @@ class GuildPlayer:
         self.seek_position: float | None = None
         self.notification_channel: discord.TextChannel | None = None
         self.auto_paused: bool = False  # paused because everyone left (resumes when someone is back)
+        self.starting: bool = False  # play_next is fetching a track (voice looks idle, but it isn't)
         self.last_active: float | None = None  # last time a track started or was queued
 
 class MusicCommands(commands.Cog):
@@ -118,6 +119,7 @@ class MusicCommands(commands.Cog):
         self._alone_timers: dict[int, asyncio.Task] = {}  # {guild_id: leave-if-still-alone task}
         self.queue_ttls: dict[int, float] = {}  # {guild_id: seconds} from /queue-expiry (default QUEUE_TTL)
         self.reboot_messages: set[int] = set()  # guilds that opted in to after-restart notes (/reboot-messages)
+        self._resume_locks: dict[int, asyncio.Lock] = {}  # {guild_id: lock} so two resumes can't overlap
         
     async def cog_load(self):
         """Check for FFmpeg availability on load"""
@@ -182,6 +184,9 @@ class MusicCommands(commands.Cog):
             for channel_id in [c for c, p in self.players.items()
                                if c not in connected and is_stale(p, ttl=self._ttl_for_channel(c))]:
                 del self.players[channel_id]
+            for channel_id, p in self.players.items():
+                if channel_id not in connected and p.current_track and p.start_time and not p.pause_start_time:
+                    p.pause_start_time = time.time()  # voice dropped mid-song: stop the clock (within 10 s)
             snaps = self._active_sessions()
             await self.sessions.save_all(snaps)
             summary = (len(snaps), len(self.players), len(self.bot.voice_clients))
@@ -356,6 +361,7 @@ class MusicCommands(commands.Cog):
             return
             
         player.last_active = time.time()
+        player.starting = True
         try:
             # 1. Get Stream URL (JIT)
             extra_before = ""
@@ -426,11 +432,13 @@ class MusicCommands(commands.Cog):
                     play_song(None)
             else:
                 play_song(None)
+            player.starting = False
             # The room may have emptied while the track was being fetched
             await self.check_alone(guild)
 
         except yt_dlp.utils.DownloadError as e:
             logger.error(f"YTDL DownloadError for {title}: {e}")
+            player.starting = False
             player.current_track = None
             if is_youtube_bot_check(e):
                 # Every track would fail the same way; stop instead of burning through the queue
@@ -442,6 +450,7 @@ class MusicCommands(commands.Cog):
         except Exception as e:
             logger.error(f"Failed to play {title}: {e}")
             # If seek fails, just move next
+            player.starting = False
             player.current_track = None
             await self.play_next(guild)
 
@@ -996,6 +1005,13 @@ class MusicCommands(commands.Cog):
 
     async def resume_for(self, member) -> str:
         """Resume for a member: unpause, or rejoin their voice channel and carry on with what was left."""
+        lock = self._resume_locks.setdefault(member.guild.id, asyncio.Lock())
+        if lock.locked():
+            return "⏳ Already resuming; give it a second."
+        async with lock:
+            return await self._resume_for(member)
+
+    async def _resume_for(self, member) -> str:
         guild = member.guild
         voice = getattr(member, "voice", None)
         if not voice or not voice.channel:
@@ -1012,9 +1028,23 @@ class MusicCommands(commands.Cog):
                 player = self.players.get(vc.channel.id)
                 title = player.current_track[1] if player and player.current_track else "something"
                 return f"🎵 Already playing **{title}**; nothing to resume."
+        if any(getattr(p, "starting", False) for p in self.players.values()
+               if getattr(getattr(self.bot.get_channel(p.channel_id), "guild", None), "id", None) == guild.id
+               or p.channel_id == voice.channel.id):
+            return "⏳ A track is already starting; give it a second."
         channel_id, player = self._leftover_player(guild, voice.channel.id)
         if player is None:
             return "📭 There's nothing to resume: the queue is empty. Ask for a song or an artist to start one."
+        # Join first: only move the left-behind player once Cave is actually in the member's channel
+        try:
+            if vc and getattr(vc, "channel", None):
+                if vc.channel.id != voice.channel.id:
+                    await vc.move_to(voice.channel)
+            else:
+                await voice.channel.connect()
+        except (discord.DiscordException, asyncio.TimeoutError) as e:
+            logger.warning(f"Resume couldn't join voice in guild {guild.id}: {e}")
+            return f"⚠️ I couldn't join {voice.channel.name} (permissions or a voice hiccup). Try again in a moment."
         # Carry the left-behind player over to the member's channel and pick up where it stopped
         self.players.pop(channel_id, None)
         player.channel_id = voice.channel.id
@@ -1024,11 +1054,6 @@ class MusicCommands(commands.Cog):
         player.auto_paused = False
         if player.current_track:
             player.seek_position = max(0.0, position - REWIND)
-        if vc and getattr(vc, "channel", None):
-            if vc.channel.id != voice.channel.id:
-                await vc.move_to(voice.channel)
-        else:
-            await voice.channel.connect()
         await self.play_next(guild)
         current = player.current_track
         if not current:
