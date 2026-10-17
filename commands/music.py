@@ -402,9 +402,10 @@ class MusicCommands(commands.Cog):
                 # Record Start Time (Adjusted for seek so Elapsed Time logic works)
                 # If we seek to 30s, we pretend we started 30s ago.
                 player.start_time = time.time() - (seek_time if seek_time else 0)
+                player.pause_start_time = None  # a pause belonged to the previous track (skip while paused)
 
-            # Define Step 1: TTS Announcement (Skip if Seeking)
-            if not seek_time and self.tts_settings.get(guild.id, False):
+            # Define Step 1: TTS Announcement (Skip if Seeking or restarting)
+            if seek_time is None and self.tts_settings.get(guild.id, False):
                 clean_title = title.split('(')[0].split('[')[0]
                 announcement_text = f"Now playing: {clean_title}"
                 
@@ -416,6 +417,8 @@ class MusicCommands(commands.Cog):
                     play_song(None)
             else:
                 play_song(None)
+            # The room may have emptied while the track was being fetched
+            await self.check_alone(guild)
 
         except yt_dlp.utils.DownloadError as e:
             logger.error(f"YTDL DownloadError for {title}: {e}")
@@ -805,6 +808,8 @@ class MusicCommands(commands.Cog):
             return None
         player = self.players.get(vc.channel.id) if getattr(vc, "channel", None) else None
         track = player.current_track if player else None
+        if player:
+            player.pause_start_time = None
         vc.stop()  # triggers the 'after' callback, which calls play_next()
         return track or ("", "the current track", "")
 
@@ -978,7 +983,8 @@ class MusicCommands(commands.Cog):
         channel = guild.get_channel(channel_id) if guild else None
         paused = bool(vc and vc.is_paused())
         current = player.current_track
-        controls = MusicButton.row(paused) if current and vc and (vc.is_playing() or paused) else None
+        # Buttons whenever a track is current, even mid-fetch right after a skip (play_next is still loading it)
+        controls = MusicButton.row(paused) if current and vc and getattr(vc, "channel", None) else None
         return queue_card(current, player.queue, channel_name=getattr(channel, "name", None),
                           elapsed=elapsed_seconds(player.start_time, player.pause_start_time) if current else None,
                           paused=paused, source=self.track_source, controls=controls)
@@ -989,11 +995,20 @@ class MusicCommands(commands.Cog):
     async def on_voice_state_update(self, member, before, after):
         guild = member.guild
         vc = guild.voice_client
-        if not vc or not getattr(vc, "channel", None) or member.id == getattr(guild.me, "id", None):
+        if member.id == getattr(guild.me, "id", None) or not vc or not getattr(vc, "channel", None):
+            # Cave moved, was disconnected or reconnected: the old channel's timer no longer applies
+            self._cancel_alone_timer(guild.id)
+            if vc and getattr(vc, "channel", None):
+                await self.check_alone(guild)
             return
         if vc.channel not in (before.channel, after.channel):
             return
         await self.check_alone(guild)
+
+    def _cancel_alone_timer(self, guild_id: int) -> None:
+        timer = self._alone_timers.pop(guild_id, None)
+        if timer:
+            timer.cancel()
 
     async def check_alone(self, guild) -> None:
         """Pause when the last person leaves Cave's channel, resume when someone's back, leave after ALONE_TIMEOUT."""
@@ -1079,7 +1094,13 @@ class MusicButton(ui.DynamicItem[ui.Button], template=r"mc:(?P<action>pause|skip
             return
         await interaction.response.defer()
         if self.action != "pause":
-            await asyncio.sleep(1.5)  # let play_next start the next (or restarted) track
+            # Wait (up to ~8 s) for play_next to fetch and start the next (or restarted) track
+            player = cog.players.get(vc.channel.id)
+            before = getattr(player, "start_time", None)
+            for _ in range(32):
+                await asyncio.sleep(0.25)
+                if getattr(player, "start_time", None) != before and (vc.is_playing() or vc.is_paused()):
+                    break
         card = cog.build_queue_card(guild, vc.channel.id)
         try:
             if card:

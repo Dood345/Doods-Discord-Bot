@@ -47,7 +47,7 @@ def snapshot(player, guild_id: int, now: Optional[float] = None) -> Optional[Mus
         channel_id=player.channel_id, guild_id=guild_id,
         text_channel_id=getattr(channel, "id", None),
         current=tuple(player.current_track), position=elapsed(player, now),
-        queue=[tuple(t) for t in player.queue], paused=bool(player.pause_start_time),
+        queue=[tuple(t) for t in player.queue], paused=bool(player.pause_start_time) and not getattr(player, "auto_paused", False),
         saved_at=now or time.time())
 
 

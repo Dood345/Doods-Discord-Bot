@@ -100,3 +100,30 @@ async def test_leaves_after_the_timeout_but_keeps_the_queue(monkeypatch):
     vc.disconnect.assert_awaited_once()
     assert p.queue == [NEXT] and 5 in cog.players                  # a request within a day picks it back up
     assert "left" in p.notification_channel.send.call_args.args[0]
+
+
+def test_skip_while_paused_clears_the_pause():
+    cog, guild, vc, p = setup_cog()
+    cog.pause(guild)
+    assert cog.skip_current(guild) == TRACK and p.pause_start_time is None
+
+
+async def test_cave_being_moved_drops_the_old_timer():
+    cog, guild, vc, p = setup_cog(members=[])
+    await cog.check_alone(guild)
+    old = cog._alone_timers[9]
+    vc.channel.members = [human()]                                 # moved into a channel with people
+    me = SimpleNamespace(id=999, guild=guild)
+    await cog.on_voice_state_update(me, SimpleNamespace(channel=None), SimpleNamespace(channel=vc.channel))
+    await asyncio.sleep(0)
+    assert old.cancelled() and 9 not in cog._alone_timers
+
+
+def test_auto_pause_isnt_saved_as_a_real_pause():
+    from services.music_sessions import snapshot
+    cog, guild, vc, p = setup_cog()
+    cog.pause(guild)
+    p.auto_paused = True
+    assert snapshot(p, 9).paused is False                          # after a restart with people back, it plays
+    p.auto_paused = False
+    assert snapshot(p, 9).paused is True
