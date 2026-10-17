@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 CHAT_COOLDOWN = 3  # seconds between AI chats per user (each chat can be several model calls)
 CHAT_HISTORY_TURNS = 10  # past messages sent with each chat (all are still stored)
-STALE_TOOLS = {"skip_song"}  # act on the present without a confirm card: withheld when answering late
+STALE_TOOLS = {"skip_song", "resume_music"}  # act on the present without a confirm card: withheld when answering late
 AGENT_TEMPERATURE = 0.3
 SUMMARY_BATCH = 20        # summarize once this many messages fall out of the prompt window
 SUMMARY_MAX_CHARS = 800
@@ -388,6 +388,7 @@ UPDATED SUMMARY:"""
             - asks for a radio/station/"more like this" -> queue_song with radio=true
             - asks what song is on -> now_playing
             - asks to skip this/the current song -> skip_song
+            - asks to resume/continue/unpause the music, queue or playlist -> resume_music
             - asks what GAME to play, or about the game library -> recommend_games / list_game_tags
             - asks to add a game, or shares a Steam/Epic store link -> add_game (pass the link)
             - gives a game a score/rating out of 10 -> rate_game

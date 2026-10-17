@@ -47,6 +47,7 @@ DEFAULT_CASES = [
     ("start a 3 doors down radio", "queue_song"),
     ("play the portal soundtrack", "queue_song"),
     ("skip this song", "skip_song"),
+    ("can you resume the playlist", "resume_music"),
     ("whats playing right now", "now_playing"),
     ("what should 4 of us play tonight?", "recommend_games"),
     ("I'd give valheim a 9/10", "rate_game"),

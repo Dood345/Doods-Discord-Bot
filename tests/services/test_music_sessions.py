@@ -68,6 +68,7 @@ async def test_restore_rejoins_and_seeks():
     text = MagicMock(spec=discord.TextChannel)
     text.send = AsyncMock()
     cog = cog_with(channel, text)
+    cog.reboot_messages = {9}                                      # this server opted in to reboot notes
     cog.sessions.load_recent.return_value = [MusicSession(5, 9, 77, TRACK, 90.0, [NEXT], paused=True)]
 
     assert await cog.restore_sessions() == 1
@@ -155,3 +156,13 @@ async def test_reply_says_so_when_the_request_failed():
     cog.play_next = AsyncMock(side_effect=request_fails)
     reply = await cog.enqueue_tracks(member, None, [REQUEST])
     assert "Couldn't play your request" in reply and "Kryptonite" in reply
+
+
+async def test_restore_is_quiet_unless_the_server_opted_in():
+    channel, vc = voice_channel()
+    text = MagicMock(spec=discord.TextChannel)
+    text.send = AsyncMock()
+    cog = cog_with(channel, text)
+    cog.sessions.load_recent.return_value = [MusicSession(5, 9, 77, TRACK, 90.0, [NEXT])]
+    assert await cog.restore_sessions() == 1
+    text.send.assert_not_awaited()

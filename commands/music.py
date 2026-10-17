@@ -14,7 +14,8 @@ from urllib.parse import urlparse
 from utils.layouts import elapsed_seconds, queue_card
 from config import BotConfig
 from services.music_library import PLEX_PREFIX, MATCH_THRESHOLD, match_score
-from services.music_sessions import REWIND, MusicSessionStore, fmt_time, is_stale, place_request, snapshot
+from services.music_sessions import (QUEUE_TTL, REBOOT_MESSAGES_KEY, REWIND, MusicSessionStore, elapsed, fmt_time,
+                                     is_stale, place_request, snapshot)
 
 logger = logging.getLogger(__name__)
 
@@ -115,11 +116,18 @@ class MusicCommands(commands.Cog):
         self.tts_settings: dict[int, bool] = {} # {guild_id: bool} (TTS preference per server)
         self.sessions = MusicSessionStore(bot.db) if getattr(bot, "db", None) else None
         self._alone_timers: dict[int, asyncio.Task] = {}  # {guild_id: leave-if-still-alone task}
+        self.queue_ttls: dict[int, float] = {}  # {guild_id: seconds} from /queue-expiry (default QUEUE_TTL)
+        self.reboot_messages: set[int] = set()  # guilds that opted in to after-restart notes (/reboot-messages)
         
     async def cog_load(self):
         """Check for FFmpeg availability on load"""
         self.bot.add_dynamic_items(MusicButton)
         if self.sessions:
+            try:
+                self.queue_ttls = await self.sessions.queue_ttls()
+                self.reboot_messages = await self.sessions.guilds_with(REBOOT_MESSAGES_KEY)
+            except Exception as e:
+                logger.warning(f"Couldn't load queue expiry settings: {e}")
             self.save_sessions.start()
         # Leftover buffered tracks from before a restart
         shutil.rmtree(BUFFER_DIR, ignore_errors=True)
@@ -171,7 +179,8 @@ class MusicCommands(commands.Cog):
         try:
             # Forget players that lost voice and haven't been used for a day (their queue would be a surprise)
             connected = {vc.channel.id for vc in self.bot.voice_clients if getattr(vc, "channel", None)}
-            for channel_id in [c for c, p in self.players.items() if c not in connected and is_stale(p)]:
+            for channel_id in [c for c, p in self.players.items()
+                               if c not in connected and is_stale(p, ttl=self._ttl_for_channel(c))]:
                 del self.players[channel_id]
             snaps = self._active_sessions()
             await self.sessions.save_all(snaps)
@@ -220,7 +229,7 @@ class MusicCommands(commands.Cog):
                     player.pause_start_time = time.time()
                 resumed += 1
                 logger.info(f"Resumed music in guild {guild.id} at {fmt_time(s.position)}")
-                if player.notification_channel:
+                if player.notification_channel and guild.id in self.reboot_messages:
                     state = "paused at" if s.paused else "picking up at"
                     more = f" (+{len(s.queue)} queued)" if s.queue else ""
                     await player.notification_channel.send(
@@ -580,7 +589,7 @@ class MusicCommands(commands.Cog):
             player.notification_channel = text_channel
         first = tracks[0]
         idle = not vc.is_playing() and not vc.is_paused()
-        leftover = place_request(player, tracks, idle)
+        leftover = place_request(player, tracks, idle, ttl=self.ttl(getattr(guild, "id", None)))
         more = f" (+{len(tracks) - 1} more queued)" if len(tracks) > 1 else ""
 
         if idle:
@@ -749,7 +758,7 @@ class MusicCommands(commands.Cog):
                 await self.play_next(guild)
         else:
             idle = not vc.is_playing() and not vc.is_paused()
-            leftover = place_request(player, added_songs, idle)
+            leftover = place_request(player, added_songs, idle, ttl=self.ttl(getattr(guild, "id", None)))
             if idle:
                 await self.play_next(guild)
                 if leftover or player.current_track not in added_songs:
@@ -921,15 +930,112 @@ class MusicCommands(commands.Cog):
         # Stop current track to trigger 'after' -> 'play_next' -> sees seek_position -> seeks
         vc.stop()
 
-    @app_commands.command(name="play-pause", description="Pause or Resume playback")
+    @app_commands.command(name="play-pause", description="Pause or resume playback (rejoins voice to resume a left queue)")
     async def play_pause(self, interaction: discord.Interaction) -> None:
         state = self.toggle_pause(interaction.guild)
         if state == "resumed":
             await interaction.response.send_message("▶️ **Resumed.**")
         elif state == "paused":
             await interaction.response.send_message("II **Paused.**")
+        elif isinstance(interaction.user, discord.Member):
+            await interaction.response.defer()  # rejoining voice and fetching the track can take a while
+            await interaction.followup.send(await self.resume_for(interaction.user))
         else:
             await interaction.response.send_message("❌ **Nothing is playing.**", ephemeral=True)
+
+    @app_commands.command(name="queue-expiry", description="How many days a left-behind queue is kept (default 1)")
+    @app_commands.describe(days="Days to keep the queue after Cave leaves voice (1-30)")
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.guild_only()
+    async def queue_expiry(self, interaction: discord.Interaction, days: app_commands.Range[int, 1, 30]) -> None:
+        perms = getattr(interaction.user, "guild_permissions", None)
+        if not (perms and perms.manage_guild):
+            await interaction.response.send_message("⛔ Only server managers can change this.", ephemeral=True)
+            return
+        await self.sessions.set_queue_days(interaction.guild_id, days)
+        self.queue_ttls[interaction.guild_id] = days * 86400
+        await interaction.response.send_message(
+            f"🗑️ Left-behind queues in this server are now cleared after **{days} day{'s' if days != 1 else ''}**.")
+
+    @app_commands.command(name="reboot-messages", description="Post a note when Cave restarts and picks the music back up")
+    @app_commands.describe(enabled="On: post the note in the music's text channel. Off (default): resume quietly")
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.guild_only()
+    async def reboot_messages_cmd(self, interaction: discord.Interaction, enabled: bool) -> None:
+        perms = getattr(interaction.user, "guild_permissions", None)
+        if not (perms and perms.manage_guild):
+            await interaction.response.send_message("⛔ Only server managers can change this.", ephemeral=True)
+            return
+        await self.sessions.set_flag(interaction.guild_id, REBOOT_MESSAGES_KEY, enabled)
+        (self.reboot_messages.add if enabled else self.reboot_messages.discard)(interaction.guild_id)
+        await interaction.response.send_message(
+            "🔁 Reboot notes **on**: after a restart I'll say when I've picked the music back up." if enabled else
+            "🔁 Reboot notes **off**: after a restart the music just resumes quietly.")
+
+    def ttl(self, guild_id: int | None) -> float:
+        return self.queue_ttls.get(guild_id, QUEUE_TTL)
+
+    def _ttl_for_channel(self, channel_id: int) -> float:
+        channel = self.bot.get_channel(channel_id) if hasattr(self.bot, "get_channel") else None
+        return self.ttl(getattr(getattr(channel, "guild", None), "id", None))
+
+    def _leftover_player(self, guild, preferred_channel_id: int):
+        """The player with something left to play in this server: the member's channel first."""
+        candidates = [preferred_channel_id] + [c for c in self.players if c != preferred_channel_id]
+        for channel_id in candidates:
+            player = self.players.get(channel_id)
+            if not player or not (player.current_track or player.queue):
+                continue
+            channel = self.bot.get_channel(channel_id) if channel_id != preferred_channel_id else None
+            if channel_id != preferred_channel_id and getattr(getattr(channel, "guild", None), "id", None) != guild.id:
+                continue
+            if is_stale(player, ttl=self.ttl(guild.id)):
+                continue
+            return channel_id, player
+        return None, None
+
+    async def resume_for(self, member) -> str:
+        """Resume for a member: unpause, or rejoin their voice channel and carry on with what was left."""
+        guild = member.guild
+        voice = getattr(member, "voice", None)
+        if not voice or not voice.channel:
+            return "🎙️ Join a voice channel first, then I can resume the music there."
+        vc = guild.voice_client
+        if vc and getattr(vc, "channel", None):
+            if vc.channel.id != voice.channel.id and (vc.is_playing() or vc.is_paused()):
+                return f"🎙️ I'm already broadcasting in {vc.channel.name}. Join that channel to control it."
+            if vc.is_paused() and self.resume(guild):
+                player = self.players.get(vc.channel.id)
+                title = player.current_track[1] if player and player.current_track else "the music"
+                return f"▶️ Resumed **{title}**."
+            if vc.is_playing():
+                player = self.players.get(vc.channel.id)
+                title = player.current_track[1] if player and player.current_track else "something"
+                return f"🎵 Already playing **{title}**; nothing to resume."
+        channel_id, player = self._leftover_player(guild, voice.channel.id)
+        if player is None:
+            return "📭 There's nothing to resume: the queue is empty. Ask for a song or an artist to start one."
+        # Carry the left-behind player over to the member's channel and pick up where it stopped
+        self.players.pop(channel_id, None)
+        player.channel_id = voice.channel.id
+        self.players[voice.channel.id] = player
+        position = elapsed(player) if player.current_track else 0.0
+        player.pause_start_time = None
+        player.auto_paused = False
+        if player.current_track:
+            player.seek_position = max(0.0, position - REWIND)
+        if vc and getattr(vc, "channel", None):
+            if vc.channel.id != voice.channel.id:
+                await vc.move_to(voice.channel)
+        else:
+            await voice.channel.connect()
+        await self.play_next(guild)
+        current = player.current_track
+        if not current:
+            return "⚠️ Couldn't restart what was left in the queue; ask for a song to start fresh."
+        more = f" (+{len(player.queue)} more queued)" if player.queue else ""
+        at = f" at {fmt_time(max(0.0, position - REWIND))}" if position >= 5 else ""
+        return f"▶️ Picking up **{current[1]}**{at}{more} in {voice.channel.name}."
 
     # --- Shared controls (slash commands, card buttons, the alone timer) ---
 

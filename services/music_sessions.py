@@ -80,22 +80,52 @@ class MusicSessionStore:
                                          [tuple(t) for t in json.loads(queue)], bool(paused), saved_at))
         return sessions
 
+    async def queue_ttls(self) -> dict:
+        """{guild_id: seconds} for servers that changed how long a left-behind queue is kept."""
+        async with self.db.get_connection() as conn:
+            async with conn.execute("SELECT guild_id, value FROM guild_settings WHERE key = ?", (QUEUE_DAYS_KEY,)) as cur:
+                rows = await cur.fetchall()
+        return {gid: float(v) * 86400 for gid, v in rows}
+
+    async def set_queue_days(self, guild_id: int, days: int):
+        async with self.db.get_connection() as conn:
+            await conn.execute("INSERT OR REPLACE INTO guild_settings (guild_id, key, value) VALUES (?, ?, ?)",
+                               (guild_id, QUEUE_DAYS_KEY, str(days)))
+            await conn.commit()
+
+    async def guilds_with(self, key: str) -> set:
+        async with self.db.get_connection() as conn:
+            async with conn.execute("SELECT guild_id FROM guild_settings WHERE key = ?", (key,)) as cur:
+                return {row[0] for row in await cur.fetchall()}
+
+    async def set_flag(self, guild_id: int, key: str, on: bool):
+        async with self.db.get_connection() as conn:
+            if on:
+                await conn.execute("INSERT OR REPLACE INTO guild_settings (guild_id, key, value) VALUES (?, ?, 'on')",
+                                   (guild_id, key))
+            else:
+                await conn.execute("DELETE FROM guild_settings WHERE guild_id = ? AND key = ?", (guild_id, key))
+            await conn.commit()
+
     async def clear(self):
         async with self.db.get_connection() as conn:
             await conn.execute("DELETE FROM music_sessions")
             await conn.commit()
 
 
-QUEUE_TTL = 24 * 60 * 60  # a player idle (not in voice) this long forgets its queue
+QUEUE_TTL = 24 * 60 * 60  # default: a player idle (not in voice) this long forgets its queue
+QUEUE_DAYS_KEY = "music_queue_days"  # guild_settings key for a server's own choice (/queue-expiry)
+REBOOT_MESSAGES_KEY = "reboot_messages"  # opt-in: post a note after a restart (e.g. music picked back up)
 
 
-def is_stale(player, now: Optional[float] = None) -> bool:
-    """True when nothing has been played or queued on this player for QUEUE_TTL."""
+def is_stale(player, now: Optional[float] = None, ttl: float = QUEUE_TTL) -> bool:
+    """True when nothing has been played or queued on this player for `ttl` seconds."""
     last = getattr(player, "last_active", None)
-    return last is not None and (now or time.time()) - last > QUEUE_TTL
+    return last is not None and (now or time.time()) - last > ttl
 
 
-def place_request(player, tracks: List[Track], idle: bool, now: Optional[float] = None) -> int:
+def place_request(player, tracks: List[Track], idle: bool, now: Optional[float] = None,
+                  ttl: float = QUEUE_TTL) -> int:
     """Put a user's request in the player's queue; returns how many leftover tracks will play after it.
 
     While music is playing (or paused) the request joins the end of the queue, as usual. When idle
@@ -104,7 +134,7 @@ def place_request(player, tracks: List[Track], idle: bool, now: Optional[float] 
     leftover queue older than a day is dropped instead.
     """
     now = now or time.time()
-    if idle and is_stale(player, now):
+    if idle and is_stale(player, now, ttl):
         player.queue = []
         player.current_track = None
     leftover = 0

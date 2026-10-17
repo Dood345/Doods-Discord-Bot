@@ -75,6 +75,15 @@ async def _skip_song(ctx: ToolContext) -> str:
     return f"Skipped {track[1]}" + (f" by {track[2]}" if track[2] else "") + ". The next track in the queue (if any) is starting."
 
 
+async def _resume_music(ctx: ToolContext) -> str:
+    music = ctx.bot.get_cog("MusicCommands")
+    if music is None:
+        return "The music system is offline."
+    if not isinstance(ctx.user, discord.Member):
+        return "ERROR: resuming only works in a server."
+    return await music.resume_for(ctx.user)
+
+
 async def _rate_game(ctx: ToolContext, title: str, score: int) -> str:
     try:
         score = int(score)
@@ -310,6 +319,14 @@ def build_cave_tools() -> ToolRegistry:
             name="skip_song",
             description="Skip the song currently playing in this server's voice channel.",
             handler=_skip_song,
+            requires_guild=True,
+        ),
+        Tool(
+            name="resume_music",
+            description=("Resume the music: unpause it, or rejoin the user's voice channel and continue the queue "
+                         "left from earlier (e.g. after Cave left an empty channel). Reports when there's nothing "
+                         "to resume. Acts right away; no button."),
+            handler=_resume_music,
             requires_guild=True,
         ),
         Tool(

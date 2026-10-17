@@ -127,3 +127,60 @@ def test_auto_pause_isnt_saved_as_a_real_pause():
     assert snapshot(p, 9).paused is False                          # after a restart with people back, it plays
     p.auto_paused = False
     assert snapshot(p, 9).paused is True
+
+
+# --- Resume (Cave's resume_music tool and /play-pause) ---
+
+def resume_setup(bot_connected=False, leftover=True):
+    cog, guild, vc, p = setup_cog()
+    target = SimpleNamespace(id=6, name="Lounge", guild=guild)
+    target.connect = AsyncMock(side_effect=lambda: setattr(guild, "voice_client", vc))
+    member = SimpleNamespace(guild=guild, voice=SimpleNamespace(channel=target))
+    if not bot_connected:
+        guild.voice_client = None
+        vc.is_playing.side_effect = lambda: False
+    if not leftover:
+        cog.players.clear()
+    cog.bot = SimpleNamespace(get_channel=lambda cid: SimpleNamespace(id=cid, guild=guild))
+    cog.play_next = AsyncMock(side_effect=lambda g: None)
+    return cog, guild, member, p, target
+
+
+async def test_resume_rejoins_and_picks_up_the_left_queue():
+    cog, guild, member, p, target = resume_setup()
+    p.start_time, p.pause_start_time = 1000.0, 1150.0                  # left 150 s into the song
+    reply = await cog.resume_for(member)
+    target.connect.assert_awaited_once()
+    assert cog.players[6] is p and 5 not in cog.players and p.channel_id == 6
+    assert p.seek_position == 147.0 and p.pause_start_time is None
+    assert "Picking up **Still Alive** at 2:27" in reply and "+1 more" in reply
+
+
+async def test_resume_says_so_when_theres_nothing():
+    cog, guild, member, p, target = resume_setup(leftover=False)
+    assert "nothing to resume" in await cog.resume_for(member)
+    target.connect.assert_not_awaited()
+    member.voice = None
+    assert "Join a voice channel" in await cog.resume_for(member)
+
+
+async def test_resume_unpauses_when_connected():
+    cog, guild, vc, p = setup_cog()
+    cog.pause(guild)
+    member = SimpleNamespace(guild=guild, voice=SimpleNamespace(channel=vc.channel))
+    assert "Resumed **Still Alive**" in await cog.resume_for(member)
+    assert vc.is_playing()
+
+
+async def test_queue_expiry_and_reboot_settings_persist(temp_db):
+    from services.music_sessions import QUEUE_TTL, REBOOT_MESSAGES_KEY, MusicSessionStore, is_stale
+    store = MusicSessionStore(temp_db)
+    await store.set_queue_days(9, 3)
+    assert await store.queue_ttls() == {9: 3 * 86400}
+    await store.set_flag(9, REBOOT_MESSAGES_KEY, True)
+    assert await store.guilds_with(REBOOT_MESSAGES_KEY) == {9}
+    await store.set_flag(9, REBOOT_MESSAGES_KEY, False)
+    assert await store.guilds_with(REBOOT_MESSAGES_KEY) == set()
+    p = GuildPlayer(5)
+    p.last_active = 0.0
+    assert is_stale(p, now=QUEUE_TTL + 1) and not is_stale(p, now=QUEUE_TTL + 1, ttl=3 * 86400)
