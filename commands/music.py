@@ -1,5 +1,5 @@
 import discord
-from discord import app_commands
+from discord import app_commands, ui
 from discord.ext import commands, tasks
 import yt_dlp
 import asyncio
@@ -104,6 +104,7 @@ class GuildPlayer:
         self.pause_start_time: float | None = None
         self.seek_position: float | None = None
         self.notification_channel: discord.TextChannel | None = None
+        self.auto_paused: bool = False  # paused because everyone left (resumes when someone is back)
         self.last_active: float | None = None  # last time a track started or was queued
 
 class MusicCommands(commands.Cog):
@@ -113,9 +114,11 @@ class MusicCommands(commands.Cog):
         self.volume: float = BotConfig.MUSIC_DEFAULT_VOLUME 
         self.tts_settings: dict[int, bool] = {} # {guild_id: bool} (TTS preference per server)
         self.sessions = MusicSessionStore(bot.db) if getattr(bot, "db", None) else None
+        self._alone_timers: dict[int, asyncio.Task] = {}  # {guild_id: leave-if-still-alone task}
         
     async def cog_load(self):
         """Check for FFmpeg availability on load"""
+        self.bot.add_dynamic_items(MusicButton)
         if self.sessions:
             self.save_sessions.start()
         # Leftover buffered tracks from before a restart
@@ -136,6 +139,9 @@ class MusicCommands(commands.Cog):
         """Cleanup when cog is unloaded (or bot shuts down)"""
         # Stop saving first, so the last snapshot (what was playing) survives the shutdown
         self.save_sessions.cancel()
+        self.bot.remove_dynamic_items(MusicButton)
+        for timer in self._alone_timers.values():
+            timer.cancel()
         self.players.clear()
         
         # Disconnect from all voice channels
@@ -820,18 +826,10 @@ class MusicCommands(commands.Cog):
             await interaction.response.send_message("The queue is empty. Silence is inefficient.")
             return
 
-        queue = player.queue
-        current = player.current_track
-
-        if not queue and not current:
+        card = self.build_queue_card(interaction.guild, target_channel_id)
+        if not card:
             await interaction.response.send_message("The queue is empty. Silence is inefficient.")
             return
-
-        vc = interaction.guild.voice_client if interaction.guild else None
-        channel = interaction.guild.get_channel(target_channel_id) if interaction.guild else None
-        card = queue_card(current, queue, channel_name=getattr(channel, "name", None),
-                          elapsed=elapsed_seconds(player.start_time, player.pause_start_time) if current else None,
-                          paused=bool(vc and vc.is_paused()), source=self.track_source)
         # Titles come from YouTube/SoundCloud/Plex, and unlike embeds a v2 card can ping: never allow it
         await interaction.response.send_message(view=card, allowed_mentions=discord.AllowedMentions.none())
         
@@ -920,41 +918,177 @@ class MusicCommands(commands.Cog):
 
     @app_commands.command(name="play-pause", description="Pause or Resume playback")
     async def play_pause(self, interaction: discord.Interaction) -> None:
-        vc = interaction.guild.voice_client if interaction.guild else None
-        if not vc or not getattr(vc, 'channel', None):
-             await interaction.response.send_message("I'm not connected.", ephemeral=True)
-             return
-             
-        channel_id = vc.channel.id
-        player = self.players.get(channel_id)
-        if not player:
-            await interaction.response.send_message("❌ **Nothing is playing.**", ephemeral=True)
-            return
-        
-        if vc.is_paused():
-            # RESUME
-            vc.resume()
-            
-            # Adjust start time so elapsed time calculation remains correct
-            # We effectively "shift" the start time forward by the duration we were paused
-            if player.pause_start_time:
-                pause_duration = time.time() - float(player.pause_start_time)
-                if player.start_time:
-                    player.start_time += pause_duration
-                player.pause_start_time = None
-            
+        state = self.toggle_pause(interaction.guild)
+        if state == "resumed":
             await interaction.response.send_message("▶️ **Resumed.**")
-            
-        elif vc.is_playing():
-            # PAUSE
-            vc.pause()
-            
-            # Record when we paused
-            player.pause_start_time = time.time()
-            
+        elif state == "paused":
             await interaction.response.send_message("II **Paused.**")
         else:
             await interaction.response.send_message("❌ **Nothing is playing.**", ephemeral=True)
+
+    # --- Shared controls (slash commands, card buttons, the alone timer) ---
+
+    def _voice_player(self, guild):
+        vc = guild.voice_client if guild else None
+        if not vc or not getattr(vc, "channel", None):
+            return None, None
+        return vc, self.players.get(vc.channel.id)
+
+    def pause(self, guild) -> bool:
+        vc, player = self._voice_player(guild)
+        if not vc or not player or not vc.is_playing():
+            return False
+        vc.pause()
+        player.pause_start_time = time.time()
+        return True
+
+    def resume(self, guild) -> bool:
+        vc, player = self._voice_player(guild)
+        if not vc or not player or not vc.is_paused():
+            return False
+        vc.resume()
+        # Shift the start forward by the pause, so the elapsed time stays right
+        if player.pause_start_time:
+            if player.start_time:
+                player.start_time += time.time() - float(player.pause_start_time)
+            player.pause_start_time = None
+        return True
+
+    def toggle_pause(self, guild) -> str | None:
+        """'paused', 'resumed', or None when nothing is on."""
+        if self.resume(guild):
+            return "resumed"
+        return "paused" if self.pause(guild) else None
+
+    def restart_current(self, guild) -> tuple[str, str, str] | None:
+        """Play the current track again from the start (works while paused too)."""
+        vc, player = self._voice_player(guild)
+        if not vc or not player or not player.current_track or not (vc.is_playing() or vc.is_paused()):
+            return None
+        player.seek_position = 0.0   # play_next replays the current track instead of advancing
+        player.pause_start_time = None
+        vc.stop()
+        return player.current_track
+
+    def build_queue_card(self, guild, channel_id: int):
+        player = self.players.get(channel_id)
+        if not player or (not player.queue and not player.current_track):
+            return None
+        vc = guild.voice_client if guild else None
+        channel = guild.get_channel(channel_id) if guild else None
+        paused = bool(vc and vc.is_paused())
+        current = player.current_track
+        controls = MusicButton.row(paused) if current and vc and (vc.is_playing() or paused) else None
+        return queue_card(current, player.queue, channel_name=getattr(channel, "name", None),
+                          elapsed=elapsed_seconds(player.start_time, player.pause_start_time) if current else None,
+                          paused=paused, source=self.track_source, controls=controls)
+
+    # --- Leave when alone ---
+
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member, before, after):
+        guild = member.guild
+        vc = guild.voice_client
+        if not vc or not getattr(vc, "channel", None) or member.id == getattr(guild.me, "id", None):
+            return
+        if vc.channel not in (before.channel, after.channel):
+            return
+        await self.check_alone(guild)
+
+    async def check_alone(self, guild) -> None:
+        """Pause when the last person leaves Cave's channel, resume when someone's back, leave after ALONE_TIMEOUT."""
+        vc, player = self._voice_player(guild)
+        if not vc:
+            return
+        alone = not any(not m.bot for m in vc.channel.members)
+        timer = self._alone_timers.get(guild.id)
+        if alone and not timer:
+            if self.pause(guild) and player:
+                player.auto_paused = True
+            self._alone_timers[guild.id] = asyncio.create_task(self._leave_if_still_alone(guild, vc.channel.id))
+        elif not alone and timer:
+            timer.cancel()
+            self._alone_timers.pop(guild.id, None)
+            if player and getattr(player, "auto_paused", False):
+                player.auto_paused = False
+                self.resume(guild)
+
+    async def _leave_if_still_alone(self, guild, channel_id: int) -> None:
+        try:
+            await asyncio.sleep(ALONE_TIMEOUT)
+        except asyncio.CancelledError:
+            return
+        self._alone_timers.pop(guild.id, None)
+        vc = guild.voice_client
+        if not vc or not getattr(vc, "channel", None) or vc.channel.id != channel_id:
+            return
+        if any(not m.bot for m in vc.channel.members):
+            return
+        player = self.players.get(channel_id)
+        if player:
+            player.auto_paused = False
+        await vc.disconnect(force=False)
+        logger.info(f"Left voice in guild {guild.id} after {ALONE_TIMEOUT // 60} minutes alone")
+        if player and player.notification_channel:
+            try:
+                await player.notification_channel.send(
+                    "👋 **Nobody's listening, so I've left.** The queue is saved for a day; ask for a song to pick it back up.")
+            except discord.HTTPException:
+                pass
+
+
+ALONE_TIMEOUT = 10 * 60  # seconds alone in voice before Cave leaves
+
+
+class MusicButton(ui.DynamicItem[ui.Button], template=r"mc:(?P<action>pause|skip|restart)"):
+    """Now-playing card controls. Persistent (custom_id only), so they keep working after restarts."""
+
+    LABELS = {"skip": ("Skip", "⏭️"), "restart": ("Restart", "⏮️")}
+
+    def __init__(self, action: str, paused: bool = False):
+        if action == "pause":
+            label, emoji = ("Resume", "▶️") if paused else ("Pause", "⏸️")
+        else:
+            label, emoji = self.LABELS[action]
+        super().__init__(ui.Button(label=label, emoji=emoji, style=discord.ButtonStyle.secondary,
+                                   custom_id=f"mc:{action}"))
+        self.action = action
+
+    @classmethod
+    def row(cls, paused: bool) -> ui.ActionRow:
+        return ui.ActionRow(cls("restart"), cls("pause", paused), cls("skip"))
+
+    @classmethod
+    async def from_custom_id(cls, interaction, item, match):
+        return cls(match["action"])
+
+    async def callback(self, interaction: discord.Interaction):
+        cog = interaction.client.get_cog("MusicCommands")
+        guild = interaction.guild
+        vc = guild.voice_client if guild else None
+        voice = getattr(interaction.user, "voice", None)
+        if not cog or not vc or not getattr(vc, "channel", None):
+            await interaction.response.send_message("Nothing is playing.", ephemeral=True)
+            return
+        if not voice or voice.channel != vc.channel:
+            await interaction.response.send_message(f"🎙️ Join {vc.channel.mention} to use the controls.", ephemeral=True)
+            return
+        actions = {"pause": cog.toggle_pause, "skip": cog.skip_current, "restart": cog.restart_current}
+        if not actions[self.action](guild):
+            await interaction.response.send_message("Nothing is playing.", ephemeral=True)
+            return
+        await interaction.response.defer()
+        if self.action != "pause":
+            await asyncio.sleep(1.5)  # let play_next start the next (or restarted) track
+        card = cog.build_queue_card(guild, vc.channel.id)
+        try:
+            if card:
+                await interaction.edit_original_response(view=card, allowed_mentions=discord.AllowedMentions.none())
+            else:
+                await interaction.edit_original_response(view=None, content="The queue is empty. Silence is inefficient.")
+        except discord.HTTPException as e:
+            logger.warning(f"Couldn't refresh the music card: {e}")
+
 
 async def setup(bot):
     await bot.add_cog(MusicCommands(bot))

@@ -90,7 +90,8 @@ def youtube_thumbnail(url: str) -> Optional[str]:
 
 def queue_card(current: Optional[Track], queue: Sequence[Track], *, channel_name: Optional[str] = None,
                elapsed: Optional[float] = None, paused: bool = False,
-               source: Optional[Callable[[str], str]] = None, shown: int = 10) -> Card:
+               source: Optional[Callable[[str], str]] = None, shown: int = 10,
+               controls: Optional[ui.ActionRow] = None) -> Card:
     """/queue: what's playing (with the YouTube thumbnail when there is one), then what's up next."""
     items: List[ui.Item] = [text("## 🎧 Audio Testing Queue")]
     if current:
@@ -112,8 +113,10 @@ def queue_card(current: Optional[Track], queue: Sequence[Track], *, channel_name
         items.append(text(f"**Up next** ({len(queue)})\n" + fit_lines(lines, 3000)))
     else:
         items.append(text("**Up next:** nothing queued. Silence is inefficient."))
+    if controls is not None:
+        items.append(controls)
     if channel_name:
-        items.append(text(f"-# 🔊 {clip(channel_name, 80)} · /skip · /play-pause · /clear"))
+        items.append(text(f"-# 🔊 {clip(channel_name, 80)} · /clear empties the queue"))
     return Card(*items)
 
 
