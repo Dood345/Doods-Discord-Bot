@@ -20,6 +20,7 @@ import aiohttp
 import discord
 
 from config import BotConfig
+from utils.ai_handler import CARD_ONLY
 from utils.members import find_member
 from utils.streaming import ReplyStreamer
 
@@ -87,7 +88,14 @@ async def answer_mention(bot, message, *, on_fail: Optional[Callable[[], Awaitab
         response = await handler.get_chat_response(
             message.author.id, mention_text(message.content, bot.user.id), guild_id,
             reply_context=reply_context, user=user or message.author, guild=message.guild,
-            channel=message.channel, on_text=streamer.update, late_since=late_since)
+            channel=message.channel, on_text=streamer.update, late_since=late_since, card_only_ok=True)
+    if response == CARD_ONLY:
+        if streamer.reply is not None:  # text that streamed before the card went up
+            try:
+                await streamer.reply.delete()
+            except discord.HTTPException:
+                pass
+        return Outcome("ok", response)
     if response:
         await streamer.finish(response)
         return Outcome("cooldown" if cooling else "ok", response)

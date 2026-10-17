@@ -544,10 +544,26 @@ class MusicCommands(commands.Cog):
             title = entry.get('title', 'Unknown')
             if match_score(query, f"{title} {uploader}") < MATCH_THRESHOLD:
                 continue
+            if "preview" in title.lower():
+                continue  # SoundCloud's 30-second Go+ snippets
             # Prefer the original over remixes/covers/live cuts unless the request asks for one
             is_variant = bool((VARIANT_WORDS - wanted_variants) & set(re.findall(r"[a-z]+", title.lower())))
             candidates.append((is_variant, rank, (entry['url'], title, uploader)))
-        return min(candidates)[2] if candidates else None
+        # Search results don't say whether a track is DRM-locked (SoundCloud Go+); check before choosing one
+        for _, _, track in sorted(candidates)[:3]:
+            if await self._soundcloud_playable(track[0]):
+                return track
+            logger.info(f"Skipping SoundCloud track {track[1]!r}: not streamable (DRM or no formats)")
+        return None
+
+    async def _soundcloud_playable(self, url: str) -> bool:
+        try:
+            data = await self._fetch_youtube_data(url)
+        except Exception as e:
+            logger.debug(f"SoundCloud check failed for {url}: {e}")
+            return False
+        formats = (data or {}).get("formats") or []
+        return any(f.get("url") and not f.get("has_drm") for f in formats) or bool((data or {}).get("url"))
 
     @staticmethod
     def track_source(url: str) -> str:

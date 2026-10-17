@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 CHAT_COOLDOWN = 3  # seconds between AI chats per user (each chat can be several model calls)
 CHAT_HISTORY_TURNS = 10  # past messages sent with each chat (all are still stored)
 STALE_TOOLS = {"skip_song", "resume_music"}  # act on the present without a confirm card: withheld when answering late
+# When a turn posts a confirm card, the card is the whole reply, unless the user asked for Cave's take
+CARD_ONLY = "\x00card-only"  # returned instead of text; callers post nothing more
+ASKS_OPINION = re.compile(r"\b(what do you think|your (take|opinion|thoughts)|thoughts on|opinion|do you like|"
+                          r"is it (good|worth)|worth (it|playing)|should (i|we)|would you|recommend)\b", re.IGNORECASE)
 AGENT_TEMPERATURE = 0.3
 SUMMARY_BATCH = 20        # summarize once this many messages fall out of the prompt window
 SUMMARY_MAX_CHARS = 800
@@ -307,7 +311,7 @@ UPDATED SUMMARY:"""
 
     async def get_chat_response(self, user_id: int, message: str, guild_id: int = None, reply_context: str = None,
                                 user=None, guild=None, channel=None, on_text=None,
-                                late_since: Optional[str] = None) -> Optional[str]:
+                                late_since: Optional[str] = None, card_only_ok: bool = False) -> Optional[str]:
         """Chat with Cave: persistent per-user memory, server awareness, and live tools.
 
         `user` must be the real Discord author; it decides which tools Cave may use.
@@ -429,14 +433,23 @@ UPDATED SUMMARY:"""
 
             ctx = ToolContext(bot=self.bot, user=user, guild=guild, channel=channel,
                               blocked=set(STALE_TOOLS) if late_since else set())
+            # Only where the caller can post nothing (an @mention): slash commands must answer, /speak needs text
+            card_only = card_only_ok and not ASKS_OPINION.search(message)
+
+            async def stream(text):
+                if not (card_only and ctx.cards):  # a posted card speaks for itself: don't stream the chatter
+                    await on_text(text)
             try:
-                chat = (lambda m, t: self._chat(m, t, on_text=on_text)) if on_text else self._chat
+                chat = (lambda m, t: self._chat(m, t, on_text=stream)) if on_text else self._chat
                 response_text = await run_agent(chat, messages, self.tools, ctx)
             except Exception as e:
                 # Tools or the loop failed: still answer, just without live data
                 logger.error(f"Agent loop failed, falling back to plain chat: {e}")
                 response_text = ((await self._chat(base_messages)).get("content") or "").strip()
 
+            if card_only and ctx.cards:
+                # Remember what was actually shown, not chatter nobody saw
+                response_text = " ".join(f"[Posted a confirm button: {c}]" for c in ctx.cards)
             if not response_text:
                 return None
 
@@ -446,7 +459,7 @@ UPDATED SUMMARY:"""
             task = asyncio.create_task(self._background_memory(user_id))
             self._bg_tasks.add(task)
             task.add_done_callback(self._bg_tasks.discard)
-            return response_text
+            return CARD_ONLY if card_only and ctx.cards else response_text
 
         except Exception as e:
             logger.error(f"AI chat response error: {e}")

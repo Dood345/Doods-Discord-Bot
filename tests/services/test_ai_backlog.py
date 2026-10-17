@@ -192,3 +192,46 @@ async def test_late_reply_waits_while_the_user_is_busy():
     out = await answer_mention(bot, msg(channel, 1, "hi"), late_since="at 4:03 PM")
     assert out.status == "busy"
     handler.get_chat_response.assert_not_awaited()
+
+
+# --- A posted confirm card is the whole reply ---
+
+async def card_handler(temp_db, monkeypatch):
+    import utils.ai_handler as ai_mod
+    from utils.ai_handler import AIHandler
+
+    async def fake_agent(chat, messages, tools, ctx):
+        ctx.cards.append("Dood345, queue kitty by Niko Rubio?")
+        return "Click that button, volunteer!"
+    monkeypatch.setattr(ai_mod, "run_agent", fake_agent)
+    handler = AIHandler(temp_db, SimpleNamespace(db=temp_db, dialogue=None, get_cog=lambda n: None))
+    handler.client = True
+    handler._background_memory = AsyncMock()
+    return handler
+
+
+async def test_card_only_reply_for_mentions(temp_db, monkeypatch):
+    from utils.ai_handler import CARD_ONLY
+    handler = await card_handler(temp_db, monkeypatch)
+    user = SimpleNamespace(id=1, name="x")
+    out = await handler.get_chat_response(1, "play some niko rubio", 9, user=user, card_only_ok=True)
+    assert out == CARD_ONLY
+    history = await temp_db.get_ai_history_with_scope(1, limit=2, include_dms=True)
+    assert "[Posted a confirm button: Dood345, queue kitty by Niko Rubio?]" in history[-1][1]   # what was shown
+
+    handler._last_chat.clear()
+    assert await handler.get_chat_response(1, "play niko rubio, what do you think of him?", 9, user=user,
+                                           card_only_ok=True) == "Click that button, volunteer!"
+    handler._last_chat.clear()
+    assert await handler.get_chat_response(1, "play some niko rubio", 9, user=user) == "Click that button, volunteer!"
+
+
+async def test_answer_mention_posts_nothing_for_card_only():
+    from utils.ai_handler import CARD_ONLY
+    channel = FakeChannel()
+    handler = SimpleNamespace(get_chat_response=AsyncMock(return_value=CARD_ONLY), _busy_users=set(),
+                              would_cooldown=lambda uid: False)
+    bot = SimpleNamespace(user=SimpleNamespace(id=BOT_ID), ai_handler=handler)
+    m = msg(channel, 1, "play some niko rubio")
+    assert (await answer_mention(bot, m)).status == "ok"
+    m.reply.assert_not_awaited()

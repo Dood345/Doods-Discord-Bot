@@ -53,12 +53,16 @@ def test_stream_source_keeps_token_out_of_url():
     assert "secret" not in url and "X-Plex-Token: secret" in before
 
 
-def music_with(library=None, sc_entries=None, yt_info=None):
+def music_with(library=None, sc_entries=None, yt_info=None, drm=()):
     music = MusicCommands(MagicMock(music_library=library))
 
     async def fetch(target):
         if target.startswith("scsearch"):
             return {"entries": sc_entries or []}
+        if "soundcloud.com" in target:
+            if target in drm:
+                raise Exception("ERROR: [soundcloud] 123: This video is DRM protected")
+            return {"formats": [{"url": "https://cf-media.sndcdn.com/a.m3u8"}]}
         return yt_info
     music._fetch_youtube_data = AsyncMock(side_effect=fetch)
     return music
@@ -180,3 +184,13 @@ async def test_search_retries_shorter_phrases():
         "still alive jonathan coulton", "still alive jonathan", "still alive"]
     lib._get = AsyncMock(return_value=None)
     assert await lib._search("anything here") is None                 # Plex down: no retries
+
+
+async def test_soundcloud_skips_drm_locked_tracks_and_previews():
+    entries = [{"url": "https://soundcloud.com/niko/tokyo", "title": "tokyo", "uploader": "Niko Rubio"},
+               {"url": "https://soundcloud.com/niko/tokyo-preview", "title": "tokyo [PREVIEW]", "uploader": "Niko Rubio"},
+               {"url": "https://soundcloud.com/niko/kitty", "title": "kitty", "uploader": "Niko Rubio"}]
+    music = music_with(sc_entries=entries, drm={"https://soundcloud.com/niko/tokyo"})
+    assert (await music._search_soundcloud("niko rubio"))[1] == "kitty"
+    locked = music_with(sc_entries=entries[:1], drm={"https://soundcloud.com/niko/tokyo"})
+    assert await locked._search_soundcloud("niko rubio") is None          # falls through to YouTube

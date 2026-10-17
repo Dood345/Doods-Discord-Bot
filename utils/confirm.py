@@ -92,6 +92,7 @@ async def post_confirmation(ctx, key: str, text: str, action: Action, check: Opt
     if ctx.channel is None:
         return "ERROR: no channel to post a confirmation in."
     ctx.pending.add(key)
+    ctx.cards.append(text)
     view = ConfirmView(ctx.user.id, action, check, confirm_label=confirm_label, text=text)
     view.message = await ctx.channel.send(view=view, allowed_mentions=discord.AllowedMentions.none())
     return ("PENDING: posted a confirmation button. NOTHING has happened yet; tell the user to click "
