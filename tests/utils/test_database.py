@@ -140,3 +140,61 @@ async def test_recommend_games(temp_db):
     # Search for non-existent
     result_empty = await temp_db.recommend_games(guild_id=12345, min_players=10)
     assert "No simulations found" in result_empty
+
+
+# --- Locking: WAL + busy timeout (2026-10-16 "database is locked" during a host stall) ---
+
+async def test_database_uses_wal(temp_db):
+    async with temp_db.get_connection() as conn:
+        async with conn.execute("PRAGMA journal_mode") as cur:
+            assert (await cur.fetchone())[0] == "wal"
+
+
+async def test_reads_do_not_wait_for_a_writer(temp_db):
+    """A slow commit elsewhere (e.g. the music save loop on a thrashing disk) must not block reads."""
+    import asyncio
+    import sqlite3
+    writer = sqlite3.connect(temp_db.db_path, isolation_level=None)
+    try:
+        writer.execute("BEGIN EXCLUSIVE")
+        writer.execute("INSERT INTO guild_settings (guild_id, key, value) VALUES (1, 'k', 'v')")
+
+        async def read():
+            async with temp_db.get_connection() as conn:
+                async with conn.execute("SELECT COUNT(*) FROM guild_settings") as cur:
+                    return (await cur.fetchone())[0]
+
+        assert await asyncio.wait_for(read(), timeout=2) == 0  # uncommitted row is invisible
+    finally:
+        writer.execute("ROLLBACK")
+        writer.close()
+
+
+async def test_writes_wait_for_a_held_lock(temp_db):
+    """A write queued behind another writer waits for it instead of failing straight away."""
+    import asyncio
+    import sqlite3
+    import threading
+    import time
+    locked = threading.Event()
+
+    def hold_lock():
+        writer = sqlite3.connect(temp_db.db_path, isolation_level=None)
+        writer.execute("BEGIN IMMEDIATE")
+        locked.set()
+        time.sleep(1.0)
+        writer.execute("COMMIT")
+        writer.close()
+
+    holder = threading.Thread(target=hold_lock)
+    holder.start()
+    await asyncio.to_thread(locked.wait)
+    try:
+        async with temp_db.get_connection() as conn:
+            await conn.execute("INSERT INTO guild_settings (guild_id, key, value) VALUES (2, 'k', 'v')")
+            await conn.commit()
+    finally:
+        await asyncio.to_thread(holder.join)
+    async with temp_db.get_connection() as conn:
+        async with conn.execute("SELECT COUNT(*) FROM guild_settings") as cur:
+            assert (await cur.fetchone())[0] == 1

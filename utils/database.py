@@ -9,6 +9,8 @@ from utils import migrations
 
 logger = logging.getLogger(__name__)
 
+BUSY_TIMEOUT = 30  # seconds a connection waits for another one's lock
+
 class DatabaseHandler:
     def __init__(self, db_path: str = 'data/doodlab.db'):
         self.db_path = db_path
@@ -16,7 +18,9 @@ class DatabaseHandler:
             os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
     
     def get_connection(self):
-        return aiosqlite.connect(self.db_path)
+        # Wait up to 30 s for a lock instead of sqlite3's 5 s: on the server's HDD a commit can stall
+        # that long while the host swaps, and loops then failed with "database is locked".
+        return aiosqlite.connect(self.db_path, timeout=BUSY_TIMEOUT)
     
     async def setup_tables(self):
         """Create missing tables in their current shape, then run pending migrations (utils/migrations.py)."""
@@ -26,6 +30,10 @@ class DatabaseHandler:
                 path = await asyncio.to_thread(migrations.backup, self.db_path)
                 logger.info(f"Backed up the database before migrating: {path}")
             async with self.get_connection() as conn:
+                # WAL (stored in the file): readers never wait on a writer's commit. Copy or restore
+                # the live DB only through sqlite's backup API, never cp: commits may still be in -wal.
+                if self.db_path != ":memory:":
+                    await conn.execute("PRAGMA journal_mode=WAL")
                 existed_before = await migrations.table_names(conn)
                 # --- Existing Tables ---
                 await conn.execute('''CREATE TABLE IF NOT EXISTS gifts

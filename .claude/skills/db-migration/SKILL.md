@@ -20,7 +20,7 @@ Add it to `setup_tables()`. No migration needed. Add it to the next `tests/fixtu
 3. Test it in `tests/utils/test_migrations.py` starting from `tests/fixtures/prod_schema_*.sql` with a few realistic rows; assert the data survives and the migration is a no-op the second time.
 4. Dry run on a copy of production before shipping:
 ```
-ssh doodlab 'rm -rf /tmp/mig && mkdir -p /tmp/mig/data && rsync -a --exclude venv --exclude data /home/dood345/discordBot/ /tmp/mig/ && cp /home/dood345/discordBot/data/doodlab.db /tmp/mig/data/'
+ssh doodlab 'rm -rf /tmp/mig && mkdir -p /tmp/mig/data && rsync -a --exclude venv --exclude data /home/dood345/discordBot/ /tmp/mig/ && cd /home/dood345/discordBot && venv/bin/python -c "import sqlite3; s=sqlite3.connect(\"data/doodlab.db\"); d=sqlite3.connect(\"/tmp/mig/data/doodlab.db\"); s.backup(d)"'
 scp utils/database.py utils/migrations.py doodlab:/tmp/mig/utils/
 ssh doodlab 'cd /tmp/mig && /home/dood345/discordBot/venv/bin/python -c "import asyncio; from utils.database import DatabaseHandler; asyncio.run(DatabaseHandler().setup_tables())" && <row counts / schema checks> ; rm -rf /tmp/mig'
 ```

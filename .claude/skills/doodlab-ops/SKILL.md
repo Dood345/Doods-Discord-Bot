@@ -13,7 +13,7 @@ description: Work on the production server ("doodlab") safely - logs, service st
 ## Golden rules
 1. **Never print secret values or LAN addresses** into the conversation. Mask when showing config: `grep -E "^PRINTER" .env | tr -d "\r" | sed -E "s/(192\.168\.[0-9]+)\.[0-9]+/\1.x/"`; for keys only show whether they're set (`grep -c "^KEY=.\+" .env`).
 2. **Back up before changing anything**: `.env` -> `cp .env data/backups/env-before-<change>`; DB -> `venv/bin/python -c "import sqlite3; s=sqlite3.connect('data/doodlab.db'); d=sqlite3.connect('data/backups/doodlab-pre-<change>.db'); s.backup(d)"`.
-3. **Experiment on copies**: copy `data/doodlab.db` to a temp dir (or a temp checkout with `rsync -a --exclude venv --exclude data`) and point the code at it. Clean up `/tmp` afterwards.
+3. **Experiment on copies**: copy `data/doodlab.db` to a temp dir with the backup API from rule 2 (the DB is in WAL mode, so `cp` can miss recent commits still in `doodlab.db-wal`) (or a temp checkout with `rsync -a --exclude venv --exclude data`) and point the code at it. Clean up `/tmp` afterwards.
 4. **Don't trust a harness that returns instantly or empty**: print real output (see the `real-model-check` skill).
 
 ## .env edits (the owner allows them)
@@ -26,7 +26,7 @@ Run detached and poll a log or cache: `nohup venv/bin/python -m utils.import_ste
 
 ## Backups and restores
 - Automatic: `data/backups/auto-nightly-*.db` (03:30 local, 14 kept), `auto-premigrate-*.db` (before migrations, 5 kept). Manual ones: `doodlab-pre-*.db`, `env-before-*`.
-- Restore a DB: back up the current one, copy the backup over `data/doodlab.db`, restart. (The bot writes to the DB constantly; restoring under a running bot then restarting is acceptable here because the restart re-reads it, but take the extra backup first.)
+- Restore a DB: back up the current one, then write the backup into the live file with the backup API (never `cp` over it: SQLite would replay the old `doodlab.db-wal` onto the restored file and corrupt it): `venv/bin/python -c "import sqlite3; s=sqlite3.connect('data/backups/<file>.db'); d=sqlite3.connect('data/doodlab.db'); s.backup(d)"`, restart. (The bot writes to the DB constantly; restoring under a running bot then restarting is acceptable here because the restart re-reads it, but take the extra backup first.)
 
 ## Deploys
 - Each deploy snapshots the running release to `/home/dood345/discordBot.prev` (code + venv), and rolls back to it automatically if the bot doesn't write a fresh `data/ready.json` within 120 s. A rolled-back deploy shows as a failed run on GitHub with a "Rolled back" warning.

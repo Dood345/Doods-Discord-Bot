@@ -13,7 +13,7 @@ import argparse
 import asyncio
 import logging
 import os
-import shutil
+import sqlite3
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -36,7 +36,11 @@ from utils.database import DatabaseHandler  # noqa: E402
 
 async def main(args):
     copy = os.path.join(tempfile.mkdtemp(), "replay.db")
-    shutil.copy(os.path.join("data", "doodlab.db"), copy)
+    # backup API, not a file copy: the live DB is in WAL mode, so recent commits may still be in -wal
+    src, dst = sqlite3.connect(os.path.join("data", "doodlab.db")), sqlite3.connect(copy)
+    src.backup(dst)
+    src.close()
+    dst.close()
     db = DatabaseHandler(db_path=copy)
     handler = AIHandler(db, SimpleNamespace(db=db, dialogue=None, get_cog=lambda name: None))
     if not handler.is_available():
