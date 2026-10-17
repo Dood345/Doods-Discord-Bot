@@ -106,6 +106,15 @@ class DatabaseHandler:
                              checks INTEGER DEFAULT 0,
                              PRIMARY KEY (night_id, user_id))''')
 
+                # Mentions the model failed to answer, answered later in order (services/ai_backlog.py; IDs only)
+                await conn.execute('''CREATE TABLE IF NOT EXISTS ai_backlog
+                            (message_id INTEGER PRIMARY KEY,
+                             channel_id INTEGER,
+                             user_id INTEGER,
+                             created_at REAL,
+                             text_key TEXT,
+                             attempts INTEGER DEFAULT 0)''')
+
                 # Per-server opt-in settings (e.g. the Daily Test Chamber channel)
                 await conn.execute('''CREATE TABLE IF NOT EXISTS guild_settings
                             (guild_id INTEGER,

@@ -46,11 +46,13 @@ class Maintenance(commands.Cog):
 
     async def cog_load(self):
         self.nightly_backup.start()
+        self.ai_catch_up.start()
         if newest_backup_age(self.bot.db.db_path) > MAX_BACKUP_AGE:
             await self.backup_now()
 
     async def cog_unload(self):
         self.nightly_backup.cancel()
+        self.ai_catch_up.cancel()
 
     async def backup_now(self) -> str:
         path = await asyncio.to_thread(migrations.backup, self.bot.db.db_path, "nightly", NIGHTLY_KEEP)
@@ -63,6 +65,22 @@ class Maintenance(commands.Cog):
             await self.backup_now()
         except Exception as e:
             logger.exception(f"Nightly backup failed: {e}")
+
+
+    @tasks.loop(seconds=30)
+    async def ai_catch_up(self):
+        """Answer mentions missed while the model was down, once Ollama is back (backs off while it isn't)."""
+        backlog = getattr(self.bot, "ai_backlog", None)
+        if backlog is None:
+            return
+        try:
+            await backlog.tick()
+        except Exception as e:
+            logger.exception(f"AI catch-up failed: {e}")
+
+    @ai_catch_up.before_loop
+    async def before_ai_catch_up(self):
+        await self.bot.wait_until_ready()
 
 
 async def setup(bot):

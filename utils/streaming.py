@@ -13,17 +13,17 @@ CURSOR = " ▌"
 class ReplyStreamer:
     """Replies to `message` once enough text arrives, then edits it as more streams in."""
 
-    def __init__(self, message, clock=time.monotonic):
+    def __init__(self, message, clock=time.monotonic, prefix: str = ""):
         self.message = message
+        self.prefix = prefix  # e.g. a catch-up note above the reply
         self.reply = None
         self.last_edit = 0.0
         self.clock = clock
 
-    @staticmethod
-    def _fit(text: str, cursor: bool) -> str:
+    def _fit(self, text: str, cursor: bool) -> str:
         suffix = CURSOR if cursor else ""
-        limit = MAX_LEN - len(suffix)
-        return (text if len(text) <= limit else text[:limit - 1] + "…") + suffix
+        limit = MAX_LEN - len(suffix) - len(self.prefix)
+        return self.prefix + (text if len(text) <= limit else text[:limit - 1] + "…") + suffix
 
     async def update(self, text: str):
         now = self.clock()

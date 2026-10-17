@@ -18,7 +18,6 @@ from utils.ai_handler import AIHandler
 from utils.reaction_handler import ReactionHandler
 from utils.database import DatabaseHandler
 from utils.dialogue_manager import DialogueManager
-from utils.streaming import ReplyStreamer
 from utils.error_reporting import ErrorReporter, handle_app_command_error
 from utils.config_report import log_report as log_config_report
 from commands.maintenance import write_ready_marker
@@ -29,6 +28,7 @@ from services.homelab_service import HomelabService
 from services.image_service import ImageService
 from services.music_library import MusicLibrary
 from services.points_service import PointsService
+from services.ai_backlog import ERROR_REPLY, AIBacklog, answer_mention
 from services.test_chamber_service import TestChamberService
 
 # Setup logging
@@ -65,6 +65,7 @@ class DoodsBot(commands.Bot):
         self.homelab_service = HomelabService()
         self.music_library = MusicLibrary()
         self.points_service = PointsService(self.db)
+        self.ai_backlog = AIBacklog(self.db, self)
         self.test_chamber = TestChamberService(self.db, self.points_service)
         
         self.ai_handler = AIHandler(self.db, self)
@@ -122,39 +123,13 @@ class DoodsBot(commands.Bot):
 
         # Handle mentions (AI Chat)
         if self.user.mentioned_in(message) and not message.mention_everyone:
-            # Strip the mention to get the actual message (handling nickname mentions too)
-            content = message.content.replace(f'<@{self.user.id}>', '').replace(f'<@!{self.user.id}>', '').strip()
-            
-            if not content:
-                content = "Hello!" # Default if just mentioned
-                
             if self.ai_handler.is_available():
-                async with message.channel.typing():
-                    # Get guild ID if available (for context awareness)
-                    guild_id = message.guild.id if message.guild else None
-                    
-                    # --- NEW: REPLY CONTEXT LOGIC ---
-                    reply_context = None
-                    if message.reference and message.reference.message_id:
-                        try:
-                            # Fetch the message they are replying to
-                            # We use fetch because the message might be old and not in cache
-                            ref_msg = await message.channel.fetch_message(message.reference.message_id)
-                            
-                            # Format it: "Author Name: Message Content"
-                            reply_context = f"REPLIED TO -> {ref_msg.author.display_name}: {ref_msg.content}"
-                        except Exception:
-                            # Message might have been deleted or inaccessible
-                            pass
-                    # ---------------------------------
-
-                    streamer = ReplyStreamer(message)
-                    response = await self.ai_handler.get_chat_response(
-                        message.author.id, content, guild_id, reply_context=reply_context,
-                        user=message.author, guild=message.guild, channel=message.channel,
-                        on_text=streamer.update
-                    )
-                    await streamer.finish(response or "🤖 *confused processing noises* (AI error)")
+                response = await answer_mention(self, message, on_fail=ERROR_REPLY)
+                if response is None:
+                    # Answered later, in order, once the model is back (services/ai_backlog.py)
+                    await self.ai_backlog.add(message)
+                else:
+                    await self.ai_backlog.after_success(message)
             else:
                 await message.reply("🤖 AI features are currently disabled (Missing API Key).")
         

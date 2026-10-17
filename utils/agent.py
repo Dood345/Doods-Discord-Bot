@@ -23,6 +23,7 @@ class ToolContext:
     guild: Any = None
     channel: Any = None
     pending: set = field(default_factory=set)  # confirmation cards already posted this turn
+    blocked: set = field(default_factory=set)  # tools not offered this turn (e.g. stale catch-up replies)
 
 
 @dataclass
@@ -52,7 +53,7 @@ class ToolRegistry:
             return False
         if tool.requires_guild and ctx.guild is None:
             return False
-        return True
+        return tool.name not in ctx.blocked
 
     def schemas_for(self, ctx: ToolContext) -> List[Dict]:
         """Only offer the model tools this caller may actually use."""
@@ -69,6 +70,8 @@ class ToolRegistry:
             return "ERROR: access denied. This user is not authorized for facility systems."
         if tool.requires_guild and ctx.guild is None:
             return "ERROR: this tool only works inside a server, not in DMs."
+        if name in ctx.blocked:
+            return f"ERROR: {name} isn't available for this message."
 
         if isinstance(raw_args, str):
             try:
