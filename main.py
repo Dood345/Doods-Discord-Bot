@@ -28,7 +28,7 @@ from services.homelab_service import HomelabService
 from services.image_service import ImageService
 from services.music_library import MusicLibrary
 from services.points_service import PointsService
-from services.ai_backlog import ERROR_REPLY, AIBacklog, answer_mention
+from services.ai_backlog import ERROR_REPLY, QUEUED_NOTE, AIBacklog, answer_mention
 from services.test_chamber_service import TestChamberService
 
 # Setup logging
@@ -124,11 +124,12 @@ class DoodsBot(commands.Bot):
         # Handle mentions (AI Chat)
         if self.user.mentioned_in(message) and not message.mention_everyone:
             if self.ai_handler.is_available():
-                response = await answer_mention(self, message, on_fail=ERROR_REPLY)
-                if response is None:
+                async def failed() -> str:
                     # Answered later, in order, once the model is back (services/ai_backlog.py)
-                    await self.ai_backlog.add(message)
-                else:
+                    return ERROR_REPLY + (QUEUED_NOTE if await self.ai_backlog.add(message) else "")
+
+                outcome = await answer_mention(self, message, on_fail=failed)
+                if outcome.status == "ok":
                     await self.ai_backlog.after_success(message)
             else:
                 await message.reply("🤖 AI features are currently disabled (Missing API Key).")

@@ -13,23 +13,30 @@ import logging
 import re
 import time
 from datetime import datetime
-from typing import List, NamedTuple, Optional
+from typing import Awaitable, Callable, List, NamedTuple, Optional
 from zoneinfo import ZoneInfo
 
 import aiohttp
 import discord
 
 from config import BotConfig
+from utils.members import find_member
 from utils.streaming import ReplyStreamer
 
 logger = logging.getLogger(__name__)
 
-ERROR_REPLY = "🤖 *confused processing noises* (AI error)\n-# I'll get back to this once my brain is back online."
+ERROR_REPLY = "🤖 *confused processing noises* (AI error)"
+QUEUED_NOTE = "\n-# I'll get back to this once my brain is back online."
 MAX_PENDING = 10              # messages kept in total...
 MAX_PER_USER = 3              # ...and per user (the rest are dropped)
 MAX_AGE = 6 * 3600            # older than this isn't worth answering
 MAX_ATTEMPTS = 3              # a message that fails this many catch-up tries is dropped
 BACKOFF = [60, 120, 300, 600]  # seconds between health checks while Ollama stays down
+
+
+class Outcome(NamedTuple):
+    status: str               # ok | cooldown (an anti-spam line, not the model) | busy | failed
+    text: Optional[str] = None
 
 
 class Pending(NamedTuple):
@@ -61,26 +68,37 @@ async def reply_context_for(message) -> Optional[str]:
         return None  # deleted or inaccessible
 
 
-async def answer_mention(bot, message, *, on_fail: Optional[str] = None, late_since: Optional[str] = None,
-                         prefix: str = "") -> Optional[str]:
-    """Run the chat agent for a message that mentions Cave and stream the reply. None if the model failed."""
+async def answer_mention(bot, message, *, on_fail: Optional[Callable[[], Awaitable[str]]] = None,
+                         late_since: Optional[str] = None, prefix: str = "", user=None) -> Outcome:
+    """Run the chat agent for a message that mentions Cave and stream the reply.
+
+    `on_fail()` gives the text to post if the model fails (live messages). `user` overrides the author
+    (a re-fetched message's author is a plain User; tools like queue_song need the Member).
+    """
+    handler = bot.ai_handler
     guild_id = message.guild.id if message.guild else None
     streamer = ReplyStreamer(message, prefix=prefix)
+    reply_context = await reply_context_for(message)
+    # Decided with no await before get_chat_response claims the user, so it can't change in between
+    if late_since and message.author.id in handler._busy_users:
+        return Outcome("busy")
+    cooling = not late_since and handler.would_cooldown(message.author.id)
     async with message.channel.typing():
-        response = await bot.ai_handler.get_chat_response(
+        response = await handler.get_chat_response(
             message.author.id, mention_text(message.content, bot.user.id), guild_id,
-            reply_context=await reply_context_for(message), user=message.author, guild=message.guild,
+            reply_context=reply_context, user=user or message.author, guild=message.guild,
             channel=message.channel, on_text=streamer.update, late_since=late_since)
     if response:
         await streamer.finish(response)
-    elif on_fail:
-        await streamer.finish(on_fail)
+        return Outcome("cooldown" if cooling else "ok", response)
+    if on_fail:
+        await streamer.finish(await on_fail())
     elif streamer.reply is not None:
         try:
             await streamer.reply.delete()  # a half-streamed catch-up reply that then failed
         except discord.HTTPException:
             pass
-    return response
+    return Outcome("failed")
 
 
 class AIBacklog:
@@ -170,7 +188,7 @@ class AIBacklog:
         async with self._lock:
             for item in await self.pending():
                 if item.user_id in self.bot.ai_handler._busy_users:
-                    break  # they're talking to Cave right now; their old message waits its turn
+                    continue  # they're talking to Cave right now; their old message waits for the next pass
                 try:
                     message = await self._fetch(item)
                 except (discord.NotFound, discord.Forbidden):
@@ -179,10 +197,23 @@ class AIBacklog:
                 except discord.HTTPException as e:
                     logger.warning(f"Couldn't fetch a missed message: {e}")
                     break
+                if not any(getattr(u, "id", None) == self.bot.user.id for u in getattr(message, "mentions", [])):
+                    await self.remove(item.message_id)  # edited so it no longer asks Cave
+                    continue
                 prefix = f"-# ⏰ Catching up on this from <t:{int(item.created_at)}:R>; my brain was offline.\n"
-                response = await answer_mention(self.bot, message, late_since=self._late_label(item.created_at),
-                                                prefix=prefix)
-                if response:
+                user = await find_member(message.guild, message.author.id) if message.guild else None
+                try:
+                    outcome = await answer_mention(self.bot, message, late_since=self._late_label(item.created_at),
+                                                   prefix=prefix, user=user)
+                except discord.HTTPException as e:
+                    # Discord refused the reply (deleted meanwhile, no permission): not a model problem
+                    logger.warning(f"Couldn't post a catch-up reply: {e}")
+                    if getattr(e, "status", None) in (403, 404) or await self._bump(item.message_id) >= MAX_ATTEMPTS:
+                        await self.remove(item.message_id)
+                    continue
+                if outcome.status == "busy":
+                    continue
+                if outcome.status == "ok":
                     await self.remove(item.message_id)
                     answered += 1
                     continue

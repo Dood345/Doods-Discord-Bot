@@ -32,7 +32,9 @@ class FakeChannel:
 
 
 def msg(channel, mid, text, user=1, at=NOW - 600):
-    m = SimpleNamespace(id=mid, content=f"<@{BOT_ID}> {text}", channel=channel, guild=SimpleNamespace(id=9),
+    m = SimpleNamespace(id=mid, content=f"<@{BOT_ID}> {text}", channel=channel,
+                        guild=SimpleNamespace(id=9, get_member=lambda uid: SimpleNamespace(id=uid, member=True)),
+                        mentions=[SimpleNamespace(id=BOT_ID)],
                         author=SimpleNamespace(id=user, display_name=f"U{user}"), reference=None,
                         created_at=datetime.fromtimestamp(at, timezone.utc), reply=AsyncMock())
     channel.messages[mid] = m
@@ -47,7 +49,7 @@ def make(temp_db, replies):
         calls.append((text, kw.get("late_since")))
         return replies.pop(0) if replies else "ok"
     channel = FakeChannel()
-    handler = SimpleNamespace(get_chat_response=chat, _busy_users=set())
+    handler = SimpleNamespace(get_chat_response=chat, _busy_users=set(), would_cooldown=lambda uid: False)
     bot = SimpleNamespace(user=SimpleNamespace(id=BOT_ID), ai_handler=handler, get_channel=lambda cid: channel)
     return AIBacklog(temp_db, bot, clock=lambda: NOW, tz=ZoneInfo("America/Chicago")), channel, calls
 
@@ -60,7 +62,7 @@ def test_only_caves_mention_is_stripped():
 async def test_live_failure_posts_the_error_and_success_streams(temp_db):
     b, channel, _ = make(temp_db, [None])
     m = msg(channel, 1, "hi")
-    assert await answer_mention(b.bot, m, on_fail=backlog_mod.ERROR_REPLY) is None
+    assert (await answer_mention(b.bot, m, on_fail=AsyncMock(return_value=backlog_mod.ERROR_REPLY))).status == "failed"
     assert "confused processing noises" in m.reply.call_args.args[0]
 
 
@@ -143,3 +145,50 @@ async def test_late_chat_withholds_skip_and_notes_the_time(temp_db):
     messages, tools = handler._chat.call_args.args[0], handler._chat.call_args.args[1]
     assert "sent at 4:03 PM" in messages[-1]["content"]
     assert "skip_song" not in [t["function"]["name"] for t in tools]
+
+
+async def test_catch_up_uses_the_member_and_skips_edited_out_mentions(temp_db):
+    b, channel, calls = make(temp_db, [])
+    seen = []
+
+    async def chat(user_id, text, guild_id, **kw):
+        seen.append(kw["user"])
+        return "ok"
+    b.bot.ai_handler.get_chat_response = chat
+    edited = msg(channel, 1, "never mind", at=NOW - 600)
+    await b.add(edited)
+    edited.mentions = []                                                # mention edited out
+    await b.add(msg(channel, 2, "play portal", at=NOW - 60))
+    assert await b.drain() == 1
+    assert len(seen) == 1 and getattr(seen[0], "member", False)         # voice-aware Member, not the plain User
+    assert await b.pending() == []
+
+
+async def test_discord_refusing_the_reply_doesnt_block_the_queue(temp_db):
+    b, channel, calls = make(temp_db, [])
+    bad = msg(channel, 1, "one", at=NOW - 600)
+    bad.reply = AsyncMock(side_effect=discord.Forbidden(MagicMock(status=403), "no perms"))
+    good = msg(channel, 2, "two", at=NOW - 60)
+    await b.add(bad)
+    await b.add(good)
+    assert await b.drain() == 1
+    good.reply.assert_awaited()
+    assert await b.pending() == []                                      # 403: dropped, not retried for hours
+
+
+async def test_live_cooldown_isnt_a_success():
+    channel = FakeChannel()
+    handler = SimpleNamespace(get_chat_response=AsyncMock(return_value="One experiment at a time!"),
+                              _busy_users=set(), would_cooldown=lambda uid: True)
+    bot = SimpleNamespace(user=SimpleNamespace(id=BOT_ID), ai_handler=handler)
+    out = await answer_mention(bot, msg(channel, 1, "hi"))
+    assert out.status == "cooldown"
+
+
+async def test_late_reply_waits_while_the_user_is_busy():
+    channel = FakeChannel()
+    handler = SimpleNamespace(get_chat_response=AsyncMock(), _busy_users={1}, would_cooldown=lambda uid: True)
+    bot = SimpleNamespace(user=SimpleNamespace(id=BOT_ID), ai_handler=handler)
+    out = await answer_mention(bot, msg(channel, 1, "hi"), late_since="at 4:03 PM")
+    assert out.status == "busy"
+    handler.get_chat_response.assert_not_awaited()

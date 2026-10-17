@@ -294,6 +294,10 @@ UPDATED SUMMARY:"""
         await self._summarize_history(user_id)
         await self._index_history(user_id)
 
+    def would_cooldown(self, user_id: int) -> bool:
+        """Whether a chat now would get the cooldown line instead of the model (no side effects)."""
+        return user_id in self._busy_users or time.monotonic() - self._last_chat.get(user_id, 0) < CHAT_COOLDOWN
+
     def _on_cooldown(self, user_id: int) -> bool:
         now = time.monotonic()
         if user_id in self._busy_users or now - self._last_chat.get(user_id, 0) < CHAT_COOLDOWN:
@@ -314,9 +318,10 @@ UPDATED SUMMARY:"""
         if not self.is_available():
             return None
         if late_since:
-            self._last_chat.pop(user_id, None)  # catch-up replies skip the 3 s gap (never _busy_users)
-
-        if self._on_cooldown(user_id):
+            # Catch-up replies skip the 3 s gap but never run alongside the user's live chat
+            if user_id in self._busy_users:
+                return None
+        elif self._on_cooldown(user_id):
             if self.bot and getattr(self.bot, "dialogue", None):
                 return self.bot.dialogue.get("cave_johnson", "ai_cooldown", fallback="One experiment at a time, test subject!")
             return "One experiment at a time, test subject!"
