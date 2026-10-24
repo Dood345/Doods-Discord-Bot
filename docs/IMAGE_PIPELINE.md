@@ -14,7 +14,9 @@ Done and measured on the 3080 (local runs, Ollama unloaded): items 1-5 of the ra
 - FLUX.2 klein 4B fp8 (`black-forest-labs/FLUX.2-klein-4b-fp8`, 4.07 GB, Apache 2.0): 4 steps, about 9 s cold and 4 s warm. It runs on Z-Image's `qwen_3_4b_fp8_mixed` encoder (same base model), so the 8 GB `qwen_3_4b` download isn't needed; only `flux2-vae.safetensors` (0.34 GB) was added. Strong lighting; its on-image lettering is often gibberish.
 - End to end through the bot service (enhancer, safety check, GPU handoff, cold load): 14-25 s per image.
 
-**Missed in the research:** FLUX.3 [klein] (`black-forest-labs/flux-3-image-klein-comfy`, published 2026-10-14) has an official int8 ConvRot build (5.8 GB diffusion + 4.9 GB `qwen3vl_4b` encoder) and ComfyUI v0.41 already has its nodes. It is gated (accept the licence on Hugging Face while logged in) under a non-Apache "other" licence, so it needs the owner's click before it can be tried. It's the next candidate for the `model:` choice.
+**FLUX.3 [klein] added (2026-10-24)** as `/imagine model: flux3-klein`: int8 diffusion (5.83 GB) + `qwen3vl_4b_int8_convrot` encoder (4.86 GB) + the shared `flux2-vae`, 16 steps, about 15 s per image when switching models. In a 3-way A/B (photoreal, watercolour, anime) it gave the most detail and the best watercolour. The optional 9B prompt upsampler from the template is skipped (Cave's enhancer does that job).
+
+Originally Missed in the research:** FLUX.3 [klein] (`black-forest-labs/flux-3-image-klein-comfy`, published 2026-10-14) has an official int8 ConvRot build (5.8 GB diffusion + 4.9 GB `qwen3vl_4b` encoder) and ComfyUI v0.41 already has its nodes. It is gated (accept the licence on Hugging Face while logged in) under a non-Apache "other" licence, so it needs the owner's click before it can be tried. It's the next candidate for the `model:` choice.
 
 ## TL;DR: the top 3
 
