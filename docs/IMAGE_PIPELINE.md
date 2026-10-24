@@ -7,6 +7,16 @@ Nothing here has been measured on our GPU yet. The experiment plan at the end tu
 The models are Z-Image Turbo `z_image_turbo_int8_convrot.safetensors` (6.2 GB), `qwen_3_4b_fp8_mixed.safetensors` (5.6 GB) and `ae.safetensors`, all from [Comfy-Org/z_image_turbo](https://huggingface.co/Comfy-Org/z_image_turbo).
 `services/image_service.py` unloads Ollama first and calls `/free` afterwards, so every job is a cold load. A job takes about 20–30 s.
 
+## Status (2026-10-24)
+
+Done and measured on the 3080 (local runs, Ollama unloaded): items 1-5 of the ranked list, plus FLUX.2 [klein] 4B as the experimental `/imagine model:` choice.
+- Z-Image Turbo at 8 steps / CFG 1 / 1024²: about 12 s cold and 7 s warm, faster than the old 9 steps / CFG 1.5 / 768².
+- FLUX.2 klein 4B fp8 (`black-forest-labs/FLUX.2-klein-4b-fp8`, 4.07 GB, Apache 2.0): 4 steps, about 9 s cold and 4 s warm. It runs on Z-Image's `qwen_3_4b_fp8_mixed` encoder (same base model), so the 8 GB `qwen_3_4b` download isn't needed; only `flux2-vae.safetensors` (0.34 GB) was added. Strong lighting; its on-image lettering is often gibberish.
+- End to end through the bot service (enhancer, safety check, GPU handoff, cold load): 14-25 s per image.
+- Image prompts with explicit words (nude, topless, NSFW...) are refused before the model sees them (`NSFW_WORDS`): the local chat model is an "uncensored" build and let adult nudity through in testing. Child-related prompts were refused by the model in every test.
+
+**Missed in the research:** FLUX.3 [klein] (`black-forest-labs/flux-3-image-klein-comfy`, published 2026-10-14) has an official int8 ConvRot build (5.8 GB diffusion + 4.9 GB `qwen3vl_4b` encoder) and ComfyUI v0.41 already has its nodes. It is gated (accept the licence on Hugging Face while logged in) under a non-Apache "other" licence, so it needs the owner's click before it can be tried. It's the next candidate for the `model:` choice.
+
 ## TL;DR: the top 3
 
 1. **Match the official workflow: CFG 1, 8 steps, 1024².** This is a JSON-only change with no downloads. We run CFG 1.5 at 768², the official template runs CFG 1 at 1024². At CFG 1, ComfyUI skips the second (negative) model pass, which should roughly pay for the 1.78× extra pixels.

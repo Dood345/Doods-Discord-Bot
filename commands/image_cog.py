@@ -35,7 +35,7 @@ class ImageCog(commands.Cog):
 
         try:
             status_msg = await interaction.followup.send(
-                self.bot.dialogue.get("system", "image_processing", prompt=prompt), wait=True)
+                self.bot.dialogue.get("system", "image_processing", prompt=clip(prompt, 300)), wait=True)
             result = await self.images.generate(interaction.user.id, prompt, shape=shape, model=model)
 
             if result.status == "ok":
@@ -68,7 +68,7 @@ class ImageCog(commands.Cog):
             await interaction.followup.send(self.bot.dialogue.get("system", f"image_{blocked}"), ephemeral=True)
             return
         status_msg = await interaction.followup.send(
-            self.bot.dialogue.get("system", "image_processing", prompt=prompt), wait=True)
+            self.bot.dialogue.get("system", "image_processing", prompt=clip(prompt, 300)), wait=True)
         try:
             # Fixed templates keep their wording: the enhancer would move the framing (safety check still runs)
             result = await self.images.generate(interaction.user.id, prompt, enhance=False, shape=shape)
