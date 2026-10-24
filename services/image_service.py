@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass
 from typing import Optional
 
-from utils.image_gen import free_comfy_memory, generate_image, is_comfy_online
+from utils.image_gen import DEFAULT_MODEL, MODELS, SHAPES, free_comfy_memory, generate_image, is_comfy_online
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +38,11 @@ class ImageService:
             return "cooldown"
         return None
 
-    async def generate(self, user_id: int, prompt: str, fail_closed: bool = False) -> ImageResult:
+    async def generate(self, user_id: int, prompt: str, fail_closed: bool = False, enhance: bool = True,
+                       shape: str = "square", model: str = DEFAULT_MODEL) -> ImageResult:
+        """enhance=False keeps a fixed template's wording (/portrait, /poster): safety check only."""
+        width, height = SHAPES.get(shape, SHAPES["square"])
+        model = model if model in MODELS else DEFAULT_MODEL
         blocked = self.check_available(user_id)
         if blocked:
             return ImageResult(blocked)
@@ -49,7 +53,7 @@ class ImageService:
 
             enhanced = prompt
             if self.ai is not None and (self.ai.is_available() or fail_closed):
-                enhanced = await self.ai.enhance_image_prompt(prompt, fail_closed=fail_closed)
+                enhanced = await self.ai.enhance_image_prompt(prompt, fail_closed=fail_closed, enhance=enhance)
             if enhanced == "SAFE_REFUSAL":
                 logger.info(f"Image prompt refused for user {user_id}")
                 return ImageResult("refused")
@@ -58,7 +62,7 @@ class ImageService:
             if self.ai is not None and self.ai.is_available():
                 await self.ai.unload_models()
             try:
-                image = await asyncio.to_thread(generate_image, enhanced)
+                image = await asyncio.to_thread(generate_image, enhanced, width, height, model)
             finally:
                 await asyncio.to_thread(free_comfy_memory)
             if not image:

@@ -16,8 +16,9 @@ def comfy(monkeypatch):
     """Fake ComfyUI: online, returns PNG bytes."""
     state = SimpleNamespace(online=True, prompts=[], events=[], result=b"PNG")
 
-    def fake_generate(prompt):
+    def fake_generate(prompt, width=1024, height=1024, model="z-image"):
         state.prompts.append(prompt)
+        state.calls = getattr(state, "calls", []) + [(width, height, model)]
         state.events.append("generate")
         return state.result
     monkeypatch.setattr(image_mod, "free_comfy_memory", lambda: state.events.append("free"))
@@ -96,3 +97,36 @@ async def test_gpu_is_handed_to_comfy_and_back(comfy):
     comfy.result = None                                  # a failed job still gives the GPU back
     assert (await svc.generate(2, "a robot")).status == "failed"
     assert comfy.events == ["unload ollama", "generate", "free"]
+
+
+async def test_shape_model_and_template_mode_reach_comfy(comfy):
+    ai = fake_ai()
+    svc = ImageService(ai)
+    await svc.generate(1, "a lighthouse", shape="tall", model="flux2-klein")
+    assert comfy.calls[-1] == (832, 1216, "flux2-klein")
+    assert ai.enhance_image_prompt.call_args.kwargs["enhance"] is True
+    await svc.generate(2, "poster template", enhance=False, shape="nonsense", model="nope")
+    assert comfy.calls[-1] == (1024, 1024, "z-image")                  # unknown values fall back to defaults
+    assert ai.enhance_image_prompt.call_args.kwargs["enhance"] is False
+
+
+def test_workflows_get_prompt_seed_and_size():
+    from utils.image_gen import MODELS, build_workflow
+    for model, spec in MODELS.items():
+        wf = build_workflow("a red fox", 832, 1216, model)
+        node, field = spec["prompt"]
+        assert wf[node]["inputs"][field] == "a red fox"
+        assert all(wf[n]["inputs"]["width"] == 832 and wf[n]["inputs"]["height"] == 1216 for n in spec["size"])
+        node, field = spec["seed"]
+        assert wf[node]["inputs"][field] < 10 ** 17                       # stays clear of the privacy guard
+
+
+async def test_template_mode_only_screens_the_prompt():
+    handler = AIHandler(None, SimpleNamespace(db=None, dialogue=None, get_cog=lambda n: None))
+    handler.client = True
+    handler._generate = AsyncMock(return_value="SAFE")
+    assert await handler.enhance_image_prompt("poster about cake", enhance=False) == "poster about cake"
+    handler._generate = AsyncMock(return_value="SAFE_REFUSAL")
+    assert await handler.enhance_image_prompt("bad", enhance=False) == "SAFE_REFUSAL"
+    handler._generate = AsyncMock(return_value="")
+    assert await handler.enhance_image_prompt("x", enhance=False, fail_closed=True) == "SAFE_REFUSAL"
