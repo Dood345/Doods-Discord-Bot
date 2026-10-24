@@ -63,8 +63,19 @@ class MiscCommands(commands.Cog):
         if dm_summary:
             embed.add_field(name="Summary of your DMs (only used in servers if you ask about your DMs)",
                             value=dm_summary[:1024], inline=False)
+        persona_service = getattr(self.bot, "persona_service", None)
+        persona = persona_service.for_channel(interaction.channel) if persona_service and interaction.guild else None
+        if persona:
+            # This channel is run by another character, who keeps a separate file
+            p_facts = await self.bot.db.get_user_facts(interaction.user.id, persona=persona)
+            p_summary, _ = await self.bot.db.get_ai_summary(interaction.user.id, persona=persona)
+            p_text = "\n".join(f"• {f}" for f in p_facts) if p_facts else "No notes yet."
+            if p_summary:
+                p_text += f"\n\n{p_summary}"
+            embed.add_field(name=f"{persona_service.label(persona)}'s own file (this channel)", value=p_text[:1024],
+                            inline=False)
         embed.add_field(name="Chat history", value=f"{len(history)} stored messages (Cave reads the last 10 plus the summary)", inline=False)
-        embed.set_footer(text="/clearhistory wipes both.")
+        embed.set_footer(text="/clearhistory wipes all of it, for every character.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name='beer', description="Get a beer recommendation")

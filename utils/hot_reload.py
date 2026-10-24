@@ -46,6 +46,7 @@ EXTENSIONS = [
     "commands.announcements",
     "commands.voice_cave",
     "commands.maintenance",
+    "commands.personas",
 ]
 
 # Cogs that hold voice connections: reloading them would cut off whatever is playing

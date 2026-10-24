@@ -65,11 +65,12 @@ async def test_only_pending_migrations_run(tmp_path, monkeypatch):
         ran.append(sorted(existed_before)[:1])
         await conn.execute("ALTER TABLE gifts ADD COLUMN note TEXT")
 
-    monkeypatch.setattr(migrations, "MIGRATIONS", migrations.MIGRATIONS + [(3, "gift notes", m3)])
-    monkeypatch.setattr(migrations, "LATEST", 3)
+    nxt = migrations.LATEST + 1
+    monkeypatch.setattr(migrations, "MIGRATIONS", migrations.MIGRATIONS + [(nxt, "gift notes", m3)])
+    monkeypatch.setattr(migrations, "LATEST", nxt)
     await DatabaseHandler(db_path=path).setup_tables()
     await DatabaseHandler(db_path=path).setup_tables()
-    assert len(ran) == 1 and versions(path)[-1] == 3
+    assert len(ran) == 1 and versions(path)[-1] == nxt
     with sqlite3.connect(path) as conn:
         assert "note" in [r[1] for r in conn.execute("PRAGMA table_info(gifts)")]
 
@@ -91,3 +92,26 @@ def test_rebuild_sql_matches_baseline(table):
     # setup_tables and the rebuild migration share one definition
     sql = {"games": migrations.GAMES_SQL, "tags": migrations.TAGS_SQL}[table]
     assert "guild_id" in sql and "UNIQUE" in sql
+
+
+async def test_persona_columns_keep_existing_memory_as_caves(tmp_path):
+    path = str(tmp_path / "prod.db")
+    make_db(path, open(FIXTURE, encoding="utf-8").read(), rows="""
+        INSERT INTO ai_history (user_id, guild_id, role, content) VALUES (1, 5, 'user', 'I main Dwarf');
+        INSERT INTO ai_history (user_id, guild_id, role, content) VALUES (1, 5, 'model', 'Noted, volunteer!');
+        INSERT INTO user_facts (user_id, fact) VALUES (1, 'mains Dwarf in Deep Rock');
+        INSERT INTO ai_embeddings (history_id, user_id, text, vector) VALUES (1, 1, 'User: I main Dwarf', x'00');
+    """)
+    db = DatabaseHandler(db_path=path)
+    await db.setup_tables()
+    with sqlite3.connect(path) as conn:
+        for table in ("ai_history", "ai_embeddings", "user_facts"):
+            assert "persona" in [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]
+    assert [c for _, c, _ in await db.get_ai_history_with_scope(1)] == ["I main Dwarf", "Noted, volunteer!"]
+    assert await db.get_user_facts(1) == ["mains Dwarf in Deep Rock"]
+    assert len(await db.get_embeddings(1)) == 1
+    # A persona starts with a clean slate
+    assert await db.get_ai_history_with_scope(1, persona="hank") == []
+    assert await db.get_user_facts(1, persona="hank") == []
+    assert await db.get_embeddings(1, persona="hank") == []
+    await db.setup_tables()                                  # idempotent

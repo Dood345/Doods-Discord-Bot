@@ -94,10 +94,18 @@ async def _separate_dm_memory(conn, existed_before: Set[str]):
         await conn.execute("DELETE FROM ai_summaries")
 
 
+async def _persona_memory(conn, existed_before: Set[str]):
+    """Channel personas keep their own memory: a persona column (NULL = Cave, so all existing rows stay Cave's)."""
+    for table in ("ai_history", "ai_embeddings", "user_facts"):
+        if table in await table_names(conn) and "persona" not in await columns(conn, table):
+            await conn.execute(f"ALTER TABLE {table} ADD COLUMN persona TEXT")
+
+
 Migration = Tuple[int, str, Callable[..., Awaitable[None]]]
 MIGRATIONS: List[Migration] = [
     (1, "per-server games and tags", _per_server_games),
     (2, "DM memory kept apart from server memory", _separate_dm_memory),
+    (3, "per-persona memory (persona column, NULL = Cave)", _persona_memory),
 ]
 LATEST = MIGRATIONS[-1][0]
 

@@ -285,7 +285,7 @@ async def _generate_image(ctx: ToolContext, prompt: str, shape: str = "square") 
 
 async def _remember_fact(ctx: ToolContext, fact: str) -> str:
     # Notes made in DMs stay private to DMs (servers only see them if the user asks about their DMs)
-    status = await ctx.bot.db.add_user_fact(ctx.user.id, str(fact), is_dm=ctx.guild is None)
+    status = await ctx.bot.db.add_user_fact(ctx.user.id, str(fact), is_dm=ctx.guild is None, persona=ctx.persona)
     return {
         "added": "Saved to this user's permanent file.",
         "duplicate": "Already in this user's file.",

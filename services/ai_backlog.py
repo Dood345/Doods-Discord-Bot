@@ -78,6 +78,11 @@ async def answer_mention(bot, message, *, on_fail: Optional[Callable[[], Awaitab
     """
     handler = bot.ai_handler
     guild_id = message.guild.id if message.guild else None
+    # A channel persona (looked up now, so catch-up replies use whoever runs the channel today) signs its replies
+    personas = getattr(bot, "persona_service", None)
+    persona = personas.for_channel(message.channel) if personas and message.guild else None
+    if persona:
+        prefix = f"{prefix}**{personas.label(persona)}:** "
     streamer = ReplyStreamer(message, prefix=prefix)
     reply_context = await reply_context_for(message)
     # Decided with no await before get_chat_response claims the user, so it can't change in between
@@ -88,7 +93,8 @@ async def answer_mention(bot, message, *, on_fail: Optional[Callable[[], Awaitab
         response = await handler.get_chat_response(
             message.author.id, mention_text(message.content, bot.user.id), guild_id,
             reply_context=reply_context, user=user or message.author, guild=message.guild,
-            channel=message.channel, on_text=streamer.update, late_since=late_since, card_only_ok=True)
+            channel=message.channel, on_text=streamer.update, late_since=late_since, card_only_ok=True,
+            persona=persona)
     if response == CARD_ONLY:
         if streamer.reply is not None:  # text that streamed before the card went up
             try:

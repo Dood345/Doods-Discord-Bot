@@ -12,7 +12,7 @@ def no_background_summaries(request, monkeypatch):
     """get_chat_response schedules a summary + recall-index job that would outlive the test's event loop.
     Disabled by default; tests that exercise it call AIHandler._summarize_history / _index_history directly."""
     if "real_summaries" not in request.keywords:
-        async def skip(self, user_id):
+        async def skip(self, user_id, persona=None):
             return None
         monkeypatch.setattr(AIHandler, "_background_memory", skip)
 

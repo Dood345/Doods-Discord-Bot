@@ -29,6 +29,7 @@ from services.image_service import ImageService
 from services.music_library import MusicLibrary
 from services.points_service import PointsService
 from services.ai_backlog import ERROR_REPLY, QUEUED_NOTE, AIBacklog, answer_mention
+from services.persona_service import PersonaService
 from services.test_chamber_service import TestChamberService
 
 # Setup logging
@@ -66,6 +67,7 @@ class DoodsBot(commands.Bot):
         self.music_library = MusicLibrary()
         self.points_service = PointsService(self.db)
         self.ai_backlog = AIBacklog(self.db, self)
+        self.persona_service = PersonaService(self.db, self.config.PERSONAS)
         self.test_chamber = TestChamberService(self.db, self.points_service)
         
         self.ai_handler = AIHandler(self.db, self)

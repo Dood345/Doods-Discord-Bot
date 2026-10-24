@@ -25,6 +25,7 @@ class ToolContext:
     pending: set = field(default_factory=set)  # confirmation cards already posted this turn
     blocked: set = field(default_factory=set)  # tools not offered this turn (e.g. stale catch-up replies)
     cards: list = field(default_factory=list)  # text of each confirmation card posted this turn
+    persona: Any = None  # channel persona key (None = Cave); its memory is kept apart
 
 
 @dataclass

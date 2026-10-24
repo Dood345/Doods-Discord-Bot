@@ -100,7 +100,8 @@ async def main(args):
             called.clear()
             handler._last_chat.clear()
             start = time.time()
-            reply = await handler.get_chat_response(1, message, guild_id=5, user=owner, guild=SimpleNamespace(id=5), channel=channel)
+            reply = await handler.get_chat_response(1, message, guild_id=5, user=owner, guild=SimpleNamespace(id=5),
+                                                    channel=channel, persona=args.persona)
             if not reply:
                 # A None reply means the model call itself failed: that's a broken harness, not a routing miss
                 sys.exit(f"Model call failed for {message!r} (model {os.environ['OLLAMA_MODEL']}); check OLLAMA_URL/OLLAMA_MODEL")
@@ -116,4 +117,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Tool-routing benchmark against the real model")
     parser.add_argument("--runs", type=int, default=1, help="repeat each case (the model isn't deterministic)")
     parser.add_argument("--poison", action="append", help="'question=bad answer' to seed into history")
+    parser.add_argument("--persona", help="a key from content/personas.json: route as that channel persona")
     sys.exit(asyncio.run(main(parser.parse_args())))
