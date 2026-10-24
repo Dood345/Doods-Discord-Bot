@@ -110,3 +110,10 @@ async def test_recall_index_keeps_persona_exchanges_apart(temp_db):
     assert [t for _, t, _ in await temp_db.get_embeddings(1)] == ["User: cave q"]
     assert [t for _, t, _ in await temp_db.get_embeddings(1, persona="hank")] == ["User: hank q"]
     assert await temp_db.get_last_embedded_id(1) == 1 and await temp_db.get_last_embedded_id(1, persona="hank") == 2
+
+
+async def test_roast_history_is_caves_only(temp_db):
+    await temp_db.add_ai_message(1, 5, "user", "told cave")
+    await temp_db.add_ai_message(1, 5, "user", "told hank", persona="hank")
+    assert [c for _, c in await temp_db.get_ai_history(1, 5)] == ["told cave"]
+    assert [c for _, c in await temp_db.get_ai_history(1)] == ["told cave"]

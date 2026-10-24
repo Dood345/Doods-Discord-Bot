@@ -413,18 +413,21 @@ class DatabaseHandler:
             logger.error(f"Failed to add AI message: {e}")
 
     async def get_ai_history(self, user_id: int, guild_id: Optional[int] = None, limit: int = 20,
-                             include_dms: bool = True) -> List[Tuple[str, str]]:
+                             include_dms: bool = True, persona: Optional[str] = None) -> List[Tuple[str, str]]:
+        """One persona's chat only (None = Cave), like every other memory read."""
         try:
             async with self.get_connection() as conn:
                 if guild_id is None:
                     # Global Context (All Servers, plus DMs unless include_dms=False)
                     dm_filter = "" if include_dms else " AND guild_id IS NOT NULL"
                     async with conn.execute(f"SELECT role, content FROM ai_history WHERE user_id = ?{dm_filter} "
-                                            "ORDER BY id DESC LIMIT ?", (user_id, limit)) as cursor:
+                                            "AND persona IS ? ORDER BY id DESC LIMIT ?", (user_id, persona, limit)) as cursor:
                         rows = await cursor.fetchall()
                 else:
                     # Local Context (Specific Server)
-                    async with conn.execute("SELECT role, content FROM ai_history WHERE user_id = ? AND guild_id = ? ORDER BY id DESC LIMIT ?", (user_id, guild_id, limit)) as cursor:
+                    async with conn.execute("SELECT role, content FROM ai_history WHERE user_id = ? AND guild_id = ? "
+                                            "AND persona IS ? ORDER BY id DESC LIMIT ?",
+                                            (user_id, guild_id, persona, limit)) as cursor:
                         rows = await cursor.fetchall()
                 
                 return list(reversed(rows))
