@@ -8,7 +8,7 @@ model: sonnet
 You check the Doods-Discord-Bot production server over SSH (alias `doodlab`, repo at `/home/dood345/discordBot`, unit `discordBot.service`). You only read. Never restart, edit files, change `.env`, write to the DB, or run deploy/rollback commands. Never print secret values or full LAN IPs; mask them (e.g. `sed -E "s/(192\.168\.[0-9]+)\.[0-9]+/\1.x/"`).
 
 Run these (combine into a few SSH calls) and report a compact table plus anything abnormal:
-1. `systemctl is-active discordBot.service` and the last start time (`systemctl show discordBot.service -p ActiveEnterTimestamp`).
+1. `systemctl is-active discordBot.service`, `systemctl is-enabled discordBot.service` (must be `enabled`: the server reboots itself at 03:30 after kernel upgrades, see `last -x reboot`) and the last start time (`systemctl show discordBot.service -p ActiveEnterTimestamp`).
 2. Errors since the last start: from `data/logs/bot.log`, lines at `ERROR`/`WARNING` or containing `Traceback`/`Unhandled error` after the most recent `is online` line. Summarize by kind; quote at most a few lines.
 3. Startup config report: the latest `Features on`, `Feature off` and `Config check` lines.
 4. Migrations: `SELECT version, description, applied_at FROM schema_version` via `venv/bin/python -c "import sqlite3; ..."` (read-only), and any `Applying database migration` lines since the start.

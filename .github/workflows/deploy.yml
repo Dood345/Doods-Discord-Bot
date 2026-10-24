@@ -19,7 +19,7 @@ env:
   # Set the DEPLOY_PATH repository variable to deploy somewhere else
   DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/home/dood345/discordBot' }}
   SERVICE: discordBot.service
-  READY_TIMEOUT: "120"
+  READY_TIMEOUT: "180"  # a fresh login after downtime has taken ~110 s
 
 jobs:
   deploy:
@@ -77,6 +77,14 @@ jobs:
         echo "::error::Bot didn't come online within ${READY_TIMEOUT}s"
         tail -n 40 "$DEPLOY_PATH/data/logs/bot.log" || true
         exit 1
+
+    - name: Check the bot starts after a reboot
+      if: success()
+      run: |
+        # The server reboots itself after kernel upgrades (03:30); a disabled service stays down until someone notices
+        if ! systemctl is-enabled --quiet "$SERVICE"; then
+          echo "::warning::$SERVICE is not enabled at boot. On the server run: sudo systemctl enable $SERVICE"
+        fi
 
     - name: Roll back to the previous release
       if: failure()

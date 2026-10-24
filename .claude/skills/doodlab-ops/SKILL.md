@@ -6,7 +6,8 @@ description: Work on the production server ("doodlab") safely - logs, service st
 # Working on the doodlab
 
 - SSH alias: `doodlab` (key in the owner's `~/.ssh`). Bot at `/home/dood345/discordBot`, venv at `venv/` (run things with `venv/bin/python` from the repo root), systemd unit `discordBot.service`.
-- Passwordless sudo covers **only** `sudo systemctl restart discordBot.service`. Not stop/start, nothing else.
+- Passwordless sudo covers **only** `sudo systemctl restart discordBot.service`. Not stop/start, nothing else. `restart` also starts a stopped service.
+- The server reboots itself at 03:30 after kernel upgrades (unattended-upgrades). If the bot is down: `last -x reboot | head -3` and `systemctl is-enabled discordBot.service` (must be enabled; only the owner can run `sudo systemctl enable`).
 - Logs: `data/logs/bot.log`. Useful greps: `Agent tool call` (what Cave decided), `Features on|Feature off|Config check` (startup config report), `Applying database migration`, `Music sessions saved|Resumed music`, `Unhandled error`.
 - The owner's PC (this machine) runs Ollama, Plex, Overseerr and ComfyUI; the server reaches them over the LAN. If AI/Plex/requests fail, check the PC side first.
 

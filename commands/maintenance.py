@@ -17,7 +17,8 @@ from utils import migrations
 logger = logging.getLogger(__name__)
 
 NIGHTLY_KEEP = 14                 # two weeks of nightly backups
-BACKUP_TIME = dtime(3, 30, tzinfo=ZoneInfo(BotConfig.BOT_TIMEZONE))
+# 03:00, not 03:30: the server's unattended-upgrades reboot at 03:30 would cut a backup off mid-write
+BACKUP_TIME = dtime(3, 0, tzinfo=ZoneInfo(BotConfig.BOT_TIMEZONE))
 MAX_BACKUP_AGE = 26 * 60 * 60     # take one at startup if the newest is older than this (bot was down at 3:30)
 READY_FILE = os.path.join("data", "ready.json")
 
