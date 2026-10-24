@@ -132,12 +132,13 @@ async def test_template_mode_only_screens_the_prompt():
     assert await handler.enhance_image_prompt("x", enhance=False, fail_closed=True) == "SAFE_REFUSAL"
 
 
-async def test_explicit_words_are_refused_before_the_model():
+async def test_prompts_about_minors_are_refused_before_the_model():
     handler = AIHandler(None, SimpleNamespace(db=None, dialogue=None, get_cog=lambda n: None))
     handler.client = True
     handler._generate = AsyncMock(return_value="A lovely enhanced prompt")
-    for prompt in ("a naked woman", "topless models on a beach", "NSFW poster", "a stripper pole"):
+    for prompt in ("teenage girls in bikinis", "a kid at the beach", "a 12 year old", "schoolgirl outfit", "toddlers"):
         assert await handler.enhance_image_prompt(prompt) == "SAFE_REFUSAL"
         assert await handler.enhance_image_prompt(prompt, enhance=False) == "SAFE_REFUSAL"
     handler._generate.assert_not_awaited()
-    assert await handler.enhance_image_prompt("a striped cat") == "A lovely enhanced prompt"   # no false hits
+    for prompt in ("a kidney bean salad", "a 30 year old woman at the beach", "goat kidneys"):
+        assert await handler.enhance_image_prompt(prompt) == "A lovely enhanced prompt"   # no false hits
