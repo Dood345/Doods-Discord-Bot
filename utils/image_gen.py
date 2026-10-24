@@ -22,6 +22,9 @@ MODELS = {
     # Experimental: FLUX.2 [klein] 4B distilled (fp8, 4 steps); shares Z-Image's Qwen3-4B text encoder
     "flux2-klein": {"workflow": "utils/image_flux2_klein.json", "prompt": ("4", "text"),
                     "seed": ("9", "noise_seed"), "size": ["8", "10"], "label": "FLUX.2 klein (experimental)"},
+    # Experimental: FLUX.3 [klein] distilled int8 (gated repo black-forest-labs/flux-3-image-klein-comfy, 16 steps)
+    "flux3-klein": {"workflow": "utils/image_flux3_klein.json", "prompt": ("4", "text"),
+                    "seed": ("7", "seed"), "size": ["6"], "label": "FLUX.3 klein (experimental)"},
 }
 DEFAULT_MODEL = "z-image"
 # ~1 megapixel shapes (both models were trained around 1 MP; sides are multiples of 64)
