@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 CHAT_COOLDOWN = 3  # seconds between AI chats per user (each chat can be several model calls)
 CHAT_HISTORY_TURNS = 10  # past messages sent with each chat (all are still stored)
-STALE_TOOLS = {"skip_song", "resume_music"}  # act on the present without a confirm card: withheld when answering late
+STALE_TOOLS = {"skip_song", "resume_music", "generate_image"}  # act on the present without a confirm card: withheld when answering late
 # When a turn posts a confirm card, the card is the whole reply, unless the user asked for Cave's take
 # Image prompts about minors are refused before the model sees them: the model alone missed some in testing
 MINOR_WORDS = re.compile(r"\b(child|children|childs?|kids?|kiddos?|minors?|teens?|teenaged?|teenagers?|toddlers?|"
@@ -402,6 +402,8 @@ UPDATED SUMMARY:"""
             - gives a game a score/rating out of 10 -> rate_game
             - asks what Science Points are, how to earn them, their points/rank/achievements, or who's winning -> science_points
             - asks you to draw/make/generate a picture or image -> generate_image
+            You may also draw on your own initiative, rarely: only when a picture would clearly add to the
+            moment (a scene you're describing, a celebration, a visual joke). Never for ordinary questions.
             - tells you a preference or fact about themselves, or asks you to remember -> remember_fact
             - asks about the network, servers, printer, downloads, movies/shows -> the homelab tools
             Never invent live data or guess what a link contains: if no tool gives you the answer,

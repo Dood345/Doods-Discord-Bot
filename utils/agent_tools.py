@@ -10,6 +10,7 @@ import discord
 from utils.agent import Tool, ToolContext, ToolRegistry
 from utils.auth import is_authorized
 from utils.confirm import post_confirmation
+from utils.layouts import clip
 from services.printer_service import describe as describe_printer
 from utils.members import member_name
 
@@ -251,7 +252,7 @@ async def _queue_song(ctx: ToolContext, query: str, radio: bool = False) -> str:
         action, check=check, confirm_label="Queue it")
 
 
-async def _generate_image(ctx: ToolContext, prompt: str) -> str:
+async def _generate_image(ctx: ToolContext, prompt: str, shape: str = "square") -> str:
     images = getattr(ctx.bot, "image_service", None)
     if images is None or ctx.channel is None:
         return "ERROR: image generation isn't available here."
@@ -266,11 +267,12 @@ async def _generate_image(ctx: ToolContext, prompt: str) -> str:
 
     async def job():
         # Chat-initiated prompts weren't typed into /imagine, so the safety filter fails closed
-        result = await images.generate(user_id, prompt, fail_closed=True)
+        result = await images.generate(user_id, prompt, fail_closed=True, shape=shape)
         if result.status == "ok":
-            await channel.send(
-                dialogue.get("system", "image_success", prompt=prompt, enhanced_prompt=result.enhanced_prompt),
-                file=discord.File(io.BytesIO(result.image), filename="generated.png"))
+            text = dialogue.get("system", "image_success", prompt=clip(prompt, 300),
+                                enhanced_prompt=clip(result.enhanced_prompt or "", 1200))
+            await channel.send(text[:2000], file=discord.File(io.BytesIO(result.image), filename="generated.png"),
+                               allowed_mentions=discord.AllowedMentions.none())
         elif result.status == "refused":
             await channel.send(dialogue.get("system", "image_denied"))
         else:
@@ -412,10 +414,12 @@ def build_cave_tools() -> ToolRegistry:
         ),
         Tool(
             name="generate_image",
-            description="Generate an image from a description and post it in this channel (takes about a minute).",
+            description="Draw an image from a description and post it in this channel (takes about a minute).",
             handler=_generate_image,
             parameters={"type": "object", "properties": {
                 "prompt": {"type": "string", "description": "What the image should show"},
+                "shape": {"type": "string", "enum": ["square", "tall", "wide"],
+                          "description": "Optional: tall for portraits/posters, wide for scenes/landscapes"},
             }, "required": ["prompt"]},
         ),
         Tool(

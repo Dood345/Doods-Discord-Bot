@@ -58,6 +58,8 @@ DEFAULT_CASES = [
     ("how's the 3d print going?", "printer_status"),
     ("draw me a turret wearing a party hat", "generate_image"),
     ("how are you today cave", None),
+    ("describe a sunset to me in one sentence", None),
+    ("what's the capital of australia?", None),
 ]
 CHIT_CHAT = [("?", "A question, volunteer? Fantastic!"),
              ("good afternoon", "Good afternoon, Test Subject! Ready to maximize our scientific dividends!"),

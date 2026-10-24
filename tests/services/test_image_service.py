@@ -85,6 +85,11 @@ async def test_tool_starts_background_job_and_posts_image(comfy):
     again = await build_cave_tools().dispatch("generate_image", {"prompt": "another"}, ctx)
     assert "less than a minute" in again
 
+    ctx.user = SimpleNamespace(id=6, name="y")
+    await build_cave_tools().dispatch("generate_image", {"prompt": "a lighthouse", "shape": "wide"}, ctx)
+    await asyncio.gather(*svc._tasks)
+    assert comfy.calls[-1] == (1216, 832, "z-image")                   # Cave draws with Z-Image, in his chosen shape
+
 
 async def test_gpu_is_handed_to_comfy_and_back(comfy):
     ai = fake_ai()
