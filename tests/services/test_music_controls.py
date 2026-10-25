@@ -199,3 +199,12 @@ async def test_no_second_start_while_a_track_is_loading():
     p.starting = True
     assert "already starting" in await cog.resume_for(member)
     target.connect.assert_not_awaited()
+
+
+def test_opus_encoder_is_tuned_for_music(monkeypatch):
+    seen = {}
+    monkeypatch.setattr(music.discord, "FFmpegOpusAudio", lambda source, **kw: seen.update(kw) or "source")
+    MusicCommands._opus_source("song.mp3", 0.5)
+    opts = seen["options"]
+    # discord.py adds -fec true -packet_loss 15 first; ours come after, so these must be present to win
+    assert "-fec 0" in opts and "-packet_loss 0" in opts and "volume=0.50" in opts
